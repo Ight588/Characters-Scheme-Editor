@@ -1,0 +1,37 @@
+# Worklog
+
+---
+Task ID: 1
+Agent: main (Super Z)
+Task: Создать веб-приложение «Редактор схем персонажей» (Type 3, Interactive Web Development)
+
+Work Log:
+- Проанализировал variables.json (дизайн-токены) и UI-kit изображения 1–4.png
+- Инициализировал fullstack-окружение (Next.js 16 + TS + Tailwind 4)
+- Установил пакеты: jspdf, html-to-image, idb-keyval
+- Дизайн-система: добавил CSS-переменные из variables.json в globals.css (--c-stroke, --c-menus-bg, --btn-gen/--btn-check/--btn-warn состояния, paddings, шрифт Inter)
+- Модель данных: src/lib/editor/types.ts (card/arrow/image/text, canvas settings, saved styles, фабрики)
+- Геометрия: geometry.ts — привязка стрелок к центру ближайшей грани карточки с равномерным распределением, bbox, distToRect
+- Изображения: image.ts — сжатие до maxDim + WEBP (canvas.toDataURL, fallback jpeg), аватары 256×256 кроп
+- Хранилище: storage.ts — IndexedDB (idb-keyval) с debounce-автосохранением, сериализация/валидация рабочего JSON-файла
+- Store: store.ts (Zustand) — элементы, порядок, view (pan/zoom), undo/redo (снапшоты ≤60), все действия (add/move/link/group/collapse/statuses/styles/clear/load)
+- Экспорт: exporters.ts — PNG/PDF (html-to-image + jsPDF, режимы full/mini через exportMode + exportOffset), JSON
+- UI-компоненты: Toolbar (заголовок + 5 кнопок Gen), Canvas (пан, Alt+wheel зум, точки-фон, слои), CardView (свёрнутая/развёрнутая, аватар, статус-чип), ArrowLayer (SVG поверх карточек, подписи HTML, ручки концов), ImageView (ресайз с пропорциями), TextView + TextFormatToolbar (B/I/U/A/список), EditableText (редактирование по ЛКМ)
+- Меню: ContextMenu (холст/карточка/стрелка/статус/изображение/текст/настройки) с подменю-списками и warn-пунктами; Panels (стиль стрелки + фон холста); ShareDialog (режим + PNG/PDF/JSON); ColorPicker статуса
+- Файловые диалоги: filepicker.ts + скрытые input'ы в Editor
+- Горячие клавиши: Ctrl+Z/Ctrl+Shift+Z/Delete/Escape
+- Browser-тестирование (agent-browser): контекстные меню, добавление карточек, редактирование текста (ЛКМ), drag карточек, стрелка с привязкой к граням, стили стрелки (пунктир/концы/цвет), зум Alt+wheel с клампом 0.2–3, панорама, undo/redo, collapse/expand, статусы (сохранение/список/цвет), импорт/экспорт JSON, экспорт PNG (full + mini), PDF, WEBP-конверсия изображений, фон-плитка, скрытие UI, мобильный viewport
+
+Fixes during testing:
+- Мир изначально рисовался от угла → transform теперь от центра вьюпорта (ResizeObserver)
+- SVG стрелок с width=0 клипал контент → viewport 10000×10000 со сдвигом, слой поверх карточек
+- Наконечники стрелок были вырожденными → правильная формула (tip/base/perpendicular)
+- ArrowStylePanel prop mismatch (id vs arrowId) → переименовано
+- ColorPicker без позиционирования → fixed + координаты
+- Подпись стрелки схлопывалась → width: max-content
+- Тулбар наезжал на заголовок на мобильных → адаптивные размеры
+
+Stage Summary:
+- Приложение полностью функционально и проверено в браузере
+- Все требования выполнены: бесконечный холст, карточки/стрелки/изображения/текст, Alt+колесо зум, редактирование по ЛКМ, WEBP-сжатие, автосохранение в IndexedDB, экспорт PNG/PDF/JSON с режимами полного/мини-описания
+- Дизайн строго по variables.json и UI-kit (1–4.png)

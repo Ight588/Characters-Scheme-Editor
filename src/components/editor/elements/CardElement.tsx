@@ -1,0 +1,229 @@
+"use client";
+
+/* Карточка персонажа: свёрнутая и развёрнутая версии */
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CircleUserRound } from "lucide-react";
+import { useEditor } from "@/lib/editor/store";
+import { CardElement, CARD_COLLAPSED_WIDTH, CARD_EXPANDED_WIDTH } from "@/lib/editor/types";
+import { requestAvatar } from "@/lib/editor/filepicker";
+import { EditableText } from "../EditableText";
+
+export function useElementDrag(kind: "move" | "arrow-body" | "arrow-end") {
+  const pushHistory = useEditor((s) => s.pushHistory);
+  const view = useEditor((s) => s.view);
+
+  const start = useRef<{ sx: number; sy: number; pushed: boolean } | null>(null);
+  const moved = useRef(false);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent, onMove: (dxWorld: number, dyWorld: number, e: PointerEvent) => void) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      start.current = { sx: e.clientX, sy: e.clientY, pushed: false };
+      moved.current = false;
+
+      const move = (ev: PointerEvent) => {
+        if (!start.current) return;
+        const dxScreen = ev.clientX - start.current.sx;
+        const dyScreen = ev.clientY - start.current.sy;
+        if (!start.current.pushed && Math.hypot(dxScreen, dyScreen) > 3) {
+          pushHistory();
+          start.current.pushed = true;
+          moved.current = true;
+        }
+        if (start.current.pushed) {
+          onMove(dxScreen / view.scale, dyScreen / view.scale, ev);
+        }
+      };
+      const up = () => {
+        start.current = null;
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    },
+    [pushHistory, view.scale]
+  );
+
+  return { onPointerDown, wasDrag: () => moved.current };
+}
+
+export function CardView({ card }: { card: CardElement }) {
+  const updateElement = useEditor((s) => s.updateElement);
+  const setRect = useEditor((s) => s.setRect);
+  const exportMode = useEditor((s) => s.exportMode);
+  const selectedId = useEditor((s) => s.selectedId);
+  const select = useEditor((s) => s.select);
+  const openMenu = useEditor((s) => s.openMenu);
+  const setEditing = useEditor((s) => s.setEditing);
+  const { onPointerDown } = useElementDrag("move");
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  const collapsed = exportMode
+    ? exportMode.mode === "mini"
+    : card.collapsed;
+  const width = collapsed ? CARD_COLLAPSED_WIDTH : CARD_EXPANDED_WIDTH;
+
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setRect(card.id, el.offsetWidth, el.offsetHeight);
+    });
+    ro.observe(el);
+    setRect(card.id, el.offsetWidth, el.offsetHeight);
+    return () => ro.disconnect();
+  }, [card.id, collapsed, setRect]);
+
+  const dragMove = useMemo(
+    () => (dxW: number, dyW: number) => {
+      const el = useEditor.getState().elements[card.id];
+      if (el) useEditor.getState().moveElement(card.id, el.x + dxW, el.y + dyW);
+    },
+    [card.id]
+  );
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (useEditor.getState().editing) return; // не таскаем во время редактирования текста
+    select(card.id);
+    onPointerDown(e, dragMove);
+  };
+
+  const statusStyle = card.status
+    ? { background: card.status.color, color: "#161414" }
+    : undefined;
+
+  const avatar = (
+    <div
+      className="shrink-0 rounded-full overflow-hidden bg-[#d9c9be] flex items-end justify-center cursor-pointer group/av relative"
+      style={{ width: collapsed ? 64 : 72, height: collapsed ? 64 : 72 }}
+      title="Нажмите, чтобы загрузить аватар"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (exportMode) return;
+        requestAvatar(card.id);
+      }}
+    >
+      {card.avatar ? (
+         
+        <img src={card.avatar} alt={`Аватар: ${card.name}`} className="w-full h-full object-cover" draggable={false} />
+      ) : (
+        <CircleUserRound size={collapsed ? 58 : 64} strokeWidth={0.8} className="text-[#c2ada0] -mb-0.5" />
+      )}
+    </div>
+  );
+
+  const statusChip = card.status && (
+    <span
+      className="status-chip"
+      style={statusStyle}
+      onPointerDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        if (exportMode) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openMenu({
+          type: "status",
+          screen: { x: e.clientX, y: e.clientY },
+          world: { x: 0, y: 0 },
+          elementId: card.id,
+        });
+      }}
+    >
+      <EditableText
+        id={card.id}
+        field="statusText"
+        value={card.status.text}
+        onChange={(v) =>
+          updateElement(card.id, { status: { ...card.status!, text: v } })
+        }
+        style={{ display: "inline-block", minWidth: 24, textAlign: "center" }}
+      />
+    </span>
+  );
+
+  return (
+    <div
+      ref={boxRef}
+      data-element-id={card.id}
+      className={`p-card no-select absolute top-0 left-0 ${selectedId === card.id && !exportMode ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
+      style={{ width, transform: `translate(${card.x}px, ${card.y}px)` }}
+      onPointerDown={handlePointerDown}
+      onContextMenu={(e) => {
+        if (exportMode) return;
+        e.preventDefault();
+        e.stopPropagation();
+        select(card.id);
+        openMenu({
+          type: "card",
+          screen: { x: e.clientX, y: e.clientY },
+          world: { x: 0, y: 0 },
+          elementId: card.id,
+        });
+      }}
+    >
+      {collapsed ? (
+        <div className="flex flex-col items-center gap-1.5 px-3 py-4">
+          {avatar}
+          <EditableText
+            id={card.id}
+            field="name"
+            value={card.name}
+            onChange={(v) => updateElement(card.id, { name: v })}
+            className="font-semibold text-[14px] leading-tight text-center max-w-full"
+            style={{ wordBreak: "break-word" }}
+          />
+          <EditableText
+            id={card.id}
+            field="years"
+            value={card.years}
+            onChange={(v) => updateElement(card.id, { years: v })}
+            className={`text-[var(--cards-age)] ${card.years ? "opacity-70" : "opacity-40"}`}
+            placeholder="Годы…"
+          />
+          {statusChip}
+        </div>
+      ) : (
+        <div className="flex gap-3" style={{ padding: "var(--p-16)" }}>
+          {avatar}
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+            <div className="flex items-start gap-2 flex-wrap">
+              <EditableText
+                id={card.id}
+                field="name"
+                value={card.name}
+                onChange={(v) => updateElement(card.id, { name: v })}
+                className="font-semibold text-[15px] leading-snug"
+              />
+              {statusChip}
+            </div>
+            <EditableText
+              id={card.id}
+              field="description"
+              value={card.description}
+              onChange={(v) => updateElement(card.id, { description: v })}
+              multiline
+              placeholder="Описание…"
+              className="text-[12px] leading-[1.45] text-[var(--c-cards-text)] flex-1"
+              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+            />
+            <div className="pt-1 mt-auto">
+              <EditableText
+                id={card.id}
+                field="years"
+                value={card.years}
+                onChange={(v) => updateElement(card.id, { years: v })}
+                className={`text-[var(--cards-age)] ${card.years ? "opacity-70" : "opacity-40"}`}
+                placeholder="Годы…"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
