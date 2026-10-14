@@ -1,0 +1,77 @@
+# ============================================================================
+# Сборка и публикация сайта на GitHub Pages через GitHub Actions.
+# Работает без локального терминала и без GitHub Desktop:
+# любой push в ветку main автоматически пересобирает и публикует сайт.
+#
+# Разовая настройка на github.com:
+#   Settings → Pages → Build and deployment → Source: «GitHub Actions»
+#
+# Ручной запуск: вкладка Actions → «Сборка и публикация на GitHub Pages» →
+# кнопка «Run workflow».
+# ============================================================================
+name: Сборка и публикация на GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Не запускать две публикации одновременно
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Сборка статики
+    runs-on: ubuntu-latest
+    steps:
+      - name: Исходники
+        uses: actions/checkout@v4
+
+      - name: Установить Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Установить зависимости
+        run: bun install
+
+      # basePath: пустой только для личных страниц вида <user>.github.io
+      - name: Определить базовый путь
+        id: basepath
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          if [[ "$REPO" == *.github.io ]]; then
+            echo "value=" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=/$REPO" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Собрать статический экспорт (out/)
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.basepath.outputs.value }}
+        run: bun run build
+
+      - name: Отключить Jekyll (.nojekyll)
+        run: touch out/.nojekyll
+
+      - name: Загрузить артефакт для Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    name: Публикация
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Опубликовать на GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
