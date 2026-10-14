@@ -14,9 +14,13 @@ import {
   SavedStatusItem,
   TextElement,
   View,
+  DEFAULT_VIEW,
   makeArrow,
   makeCard,
   makeText,
+  normalizeCanvasSettings,
+  normalizePoint,
+  normalizeView,
   uid,
 } from "./types";
 
@@ -118,6 +122,7 @@ type EditorState = {
   loadFromFile: (data: import("./types").PersistedState) => void;
 
   setView: (v: View) => void;
+  resetView: () => void;
   panBy: (dx: number, dy: number) => void;
   zoomAt: (screen: Point, viewportSize: { w: number; h: number }, factor: number) => void;
 
@@ -145,16 +150,51 @@ function toSnapshot(s: EditorState): Snapshot {
   };
 }
 
-function normalizeElements(list: CanvasElement[]): {
+function normalizeCanvasElement(el: CanvasElement): CanvasElement {
+  const base = { ...el, ...normalizePoint(el) } as CanvasElement;
+  if (base.kind === "arrow") {
+    return {
+      ...base,
+      fromPoint: normalizePoint(base.fromPoint),
+      toPoint: normalizePoint(base.toPoint),
+    };
+  }
+  if (base.kind === "image") {
+    return {
+      ...base,
+      width: Number.isFinite(base.width) && base.width > 0 ? base.width : 1,
+      height: Number.isFinite(base.height) && base.height > 0 ? base.height : 1,
+    };
+  }
+  if (base.kind === "text") {
+    return {
+      ...base,
+      width: Number.isFinite(base.width) && base.width > 0 ? base.width : 220,
+    };
+  }
+  return base;
+}
+
+function normalizeElements(
+  list: CanvasElement[],
+  preferredOrder: string[] = []
+): {
   elements: Record<string, CanvasElement>;
   order: string[];
 } {
   const elements: Record<string, CanvasElement> = {};
-  const order: string[] = [];
+  const sourceOrder: string[] = [];
   for (const el of list) {
     if (!el || typeof el.id !== "string" || !el.kind) continue;
-    elements[el.id] = el;
-    if (!order.includes(el.id)) order.push(el.id);
+    const normalized = normalizeCanvasElement(el);
+    elements[normalized.id] = normalized;
+    if (!sourceOrder.includes(normalized.id)) sourceOrder.push(normalized.id);
+  }
+
+  // Сохраняем порядок слоёв из файла, но выкидываем удалённые/дублирующиеся id.
+  const order: string[] = [];
+  for (const id of [...preferredOrder, ...sourceOrder]) {
+    if (elements[id] && !order.includes(id)) order.push(id);
   }
   return { elements, order };
 }
@@ -164,10 +204,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   title: "",
   elements: {},
   order: [],
-  settings: { bgColor: "#f2eeeb", bgFit: "tile", bgOpacity: 100 },
+  settings: normalizeCanvasSettings(),
   savedStatuses: [],
   savedArrowStyles: [],
-  view: { x: 0, y: 0, scale: 1 },
+  view: { ...DEFAULT_VIEW },
 
   rects: {},
   selectedId: null,
@@ -187,16 +227,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       set({ hydrated: true });
       return;
     }
-    const { elements, order } = normalizeElements(data.elements);
+    const { elements, order } = normalizeElements(data.elements, data.order);
     set({
       hydrated: true,
       title: data.title ?? "",
       elements,
       order,
-      settings: data.settings ?? { bgColor: "#f2eeeb", bgFit: "tile", bgOpacity: 100 },
+      settings: normalizeCanvasSettings(data.settings),
       savedStatuses: data.savedStatuses ?? [],
       savedArrowStyles: data.savedArrowStyles ?? [],
-      view: data.view ?? { x: 0, y: 0, scale: 1 },
+      view: normalizeView(data.view),
       past: [],
       future: [],
     });
@@ -263,7 +303,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   addCardAt: (world) => {
     get().pushHistory();
-    const card = makeCard(world.x, world.y, {
+    const point = normalizePoint(world);
+    const card = makeCard(point.x, point.y, {
       status: { text: "Статус", color: "#f6ecb5" },
     });
     set((s) => ({
@@ -277,7 +318,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   addArrowAt: (world) => {
     get().pushHistory();
-    const arrow = makeArrow(world.x, world.y);
+    const point = normalizePoint(world);
+    const arrow = makeArrow(point.x, point.y);
     set((s) => ({
       elements: { ...s.elements, [arrow.id]: arrow },
       order: [...s.order, arrow.id],
@@ -289,7 +331,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   addTextAt: (world) => {
     get().pushHistory();
-    const text = makeText(world.x, world.y);
+    const point = normalizePoint(world);
+    const text = makeText(point.x, point.y);
     set((s) => ({
       elements: { ...s.elements, [text.id]: text },
       order: [...s.order, text.id],
@@ -302,14 +345,15 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   addImageAt: (world, src, w, h) => {
     get().pushHistory();
+    const point = normalizePoint(world);
     const img: ImageElement = {
       id: uid("img"),
       kind: "image",
-      x: world.x,
-      y: world.y,
+      x: point.x,
+      y: point.y,
       src,
-      width: w,
-      height: h,
+      width: Number.isFinite(w) && w > 0 ? w : 1,
+      height: Number.isFinite(h) && h > 0 ? h : 1,
     };
     set((s) => ({
       elements: { ...s.elements, [img.id]: img },
@@ -322,11 +366,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     const s = get();
     if (!s.clipboard) return;
     s.pushHistory();
+    const point = normalizePoint(world);
     const copy: CardElement = {
       ...s.clipboard,
       id: uid("card"),
-      x: world.x,
-      y: world.y,
+      x: point.x,
+      y: point.y,
       groupId: undefined,
     };
     set((st) => ({
@@ -347,6 +392,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   moveElement: (id, x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     set((s) => {
       const el = s.elements[id];
       if (!el) return s;
@@ -371,22 +417,32 @@ export const useEditor = create<EditorState>((set, get) => ({
     const el = s.elements[id];
     if (!el) return;
     s.pushHistory();
+
     const elements = { ...s.elements };
+    const removedIds = new Set<string>([id]);
     delete elements[id];
-    // удаляем стрелки, связанные с карточкой
+
+    // Вместе с карточкой удаляем привязанные стрелки, в том числе из order/rects.
     if (el.kind === "card") {
       for (const other of Object.values(elements)) {
         if (other.kind === "arrow" && (other.fromCard === id || other.toCard === id)) {
+          removedIds.add(other.id);
           delete elements[other.id];
         }
       }
     }
+
+    const rects = { ...s.rects };
+    for (const removedId of removedIds) delete rects[removedId];
+
     set((st) => ({
       elements,
-      order: st.order.filter((x) => elements[x]),
-      selectedId: st.selectedId === id ? null : st.selectedId,
-      editing: st.editing?.id === id ? null : st.editing,
+      order: st.order.filter((elementId) => !removedIds.has(elementId) && Boolean(elements[elementId])),
+      rects,
+      selectedId: st.selectedId && removedIds.has(st.selectedId) ? null : st.selectedId,
+      editing: st.editing && removedIds.has(st.editing.id) ? null : st.editing,
       menu: null,
+      panel: st.panel?.type === "arrow-style" && removedIds.has(st.panel.id) ? null : st.panel,
     }));
   },
 
@@ -543,7 +599,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   setSettings: (patch) => {
-    set((s) => ({ settings: { ...s.settings, ...patch } }));
+    set((s) => ({ settings: normalizeCanvasSettings({ ...s.settings, ...patch }) }));
   },
 
   saveStatusFromCard: (cardId) => {
@@ -633,30 +689,44 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   clearCanvas: () => {
     const s = get();
-    if (!s.order.length && s.title === "") return;
+    if (!Object.keys(s.elements).length && !s.order.length && s.title === "") {
+      set({
+        menu: null,
+        panel: null,
+        selectedId: null,
+        editing: null,
+        rects: {},
+        clipboard: null,
+        view: { ...DEFAULT_VIEW },
+      });
+      return;
+    }
     s.pushHistory();
     set({
       elements: {},
       order: [],
+      rects: {},
       selectedId: null,
       editing: null,
       menu: null,
       panel: null,
+      clipboard: null,
       title: "",
+      view: { ...DEFAULT_VIEW },
     });
   },
 
   loadFromFile: (data) => {
     get().pushHistory();
-    const { elements, order } = normalizeElements(data.elements);
+    const { elements, order } = normalizeElements(data.elements, data.order);
     set({
       title: data.title ?? "",
       elements,
       order,
-      settings: data.settings,
+      settings: normalizeCanvasSettings(data.settings),
       savedStatuses: data.savedStatuses ?? [],
       savedArrowStyles: data.savedArrowStyles ?? [],
-      view: data.view ?? { x: 0, y: 0, scale: 1 },
+      view: normalizeView(data.view),
       selectedId: null,
       editing: null,
       menu: null,
@@ -665,22 +735,34 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  setView: (v) => set({ view: v }),
+  setView: (v) => set({ view: normalizeView(v) }),
 
-  panBy: (dx, dy) =>
-    set((s) => ({ view: { ...s.view, x: s.view.x + dx, y: s.view.y + dy } })),
+  resetView: () => set({ view: { ...DEFAULT_VIEW }, menu: null, panel: null }),
+
+  panBy: (dx, dy) => {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    set((s) => {
+      const view = normalizeView(s.view);
+      return { view: { ...view, x: view.x + dx, y: view.y + dy } };
+    });
+  },
 
   zoomAt: (screen, viewportSize, factor) => {
+    if (!Number.isFinite(factor) || factor <= 0) return;
     set((s) => {
-      const scale = Math.min(3, Math.max(0.2, s.view.scale * factor));
-      const realFactor = scale / s.view.scale;
-      // точка мира под курсором
-      const wx = (screen.x - viewportSize.w / 2 - s.view.x) / s.view.scale;
-      const wy = (screen.y - viewportSize.h / 2 - s.view.y) / s.view.scale;
-      // новая трансляция, чтобы точка осталась под курсором
-      const x = screen.x - viewportSize.w / 2 - wx * realFactor;
-      const y = screen.y - viewportSize.h / 2 - wy * realFactor;
-      return { view: { x, y, scale } };
+      const view = normalizeView(s.view);
+      const scale = normalizeView({ ...view, scale: view.scale * factor }).scale;
+      const screenX = Number.isFinite(screen.x) ? screen.x : viewportSize.w / 2;
+      const screenY = Number.isFinite(screen.y) ? screen.y : viewportSize.h / 2;
+      const width = Number.isFinite(viewportSize.w) ? viewportSize.w : 0;
+      const height = Number.isFinite(viewportSize.h) ? viewportSize.h : 0;
+
+      // Мировая точка под курсором должна остаться под ним после масштабирования.
+      const wx = (screenX - width / 2 - view.x) / view.scale;
+      const wy = (screenY - height / 2 - view.y) / view.scale;
+      const x = screenX - width / 2 - wx * scale;
+      const y = screenY - height / 2 - wy * scale;
+      return { view: normalizeView({ x, y, scale }) };
     });
   },
 
@@ -711,13 +793,16 @@ export const useEditor = create<EditorState>((set, get) => ({
 
 /** Выборка сохраняемого среза для хранилища/файла */
 export function getPersistedSlice(s: EditorState) {
+  // JSON/IndexedDB получают только живые элементы в фактическом порядке слоёв.
+  // Это не даёт удалённым id остаться в рабочем файле даже после старого/битого импорта.
+  const order = [...new Set(s.order)].filter((id) => Boolean(s.elements[id]));
   return {
     title: s.title,
-    elements: s.order.map((id) => s.elements[id]).filter(Boolean),
-    order: s.order,
-    settings: s.settings,
-    savedStatuses: s.savedStatuses,
-    savedArrowStyles: s.savedArrowStyles,
-    view: s.view,
+    elements: order.map((id) => s.elements[id]),
+    order,
+    settings: { ...s.settings },
+    savedStatuses: s.savedStatuses.map((item) => ({ ...item })),
+    savedArrowStyles: s.savedArrowStyles.map((item) => ({ ...item })),
+    view: normalizeView(s.view),
   };
 }

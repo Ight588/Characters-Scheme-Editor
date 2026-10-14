@@ -24,6 +24,7 @@ import {
   FileDown,
   Eraser,
   Plus,
+  LocateFixed,
 } from "lucide-react";
 import { useEditor, MenuState } from "@/lib/editor/store";
 import { requestOpenFile } from "@/lib/editor/filepicker";
@@ -61,6 +62,7 @@ export const MenuIcons = {
   share: <FileDown size={15} strokeWidth={1.8} />,
   clear: <Eraser size={15} strokeWidth={1.8} />,
   plus: <Plus size={15} strokeWidth={1.8} />,
+  origin: <LocateFixed size={15} strokeWidth={1.8} />,
 };
 
 /* ---------------------- Контейнер меню ---------------------- */
@@ -106,7 +108,7 @@ export function ContextMenu({
   width?: number;
 }) {
   const openMenu = useEditor((s) => s.openMenu);
-  const ref = useRef<HTMLDivElement | null>(null);
+  const ref = useOutsideClose(() => openMenu(null));
   const [pos, setPos] = React.useState<Point2>({ x: state.screen.x, y: state.screen.y });
 
   useEffect(() => {

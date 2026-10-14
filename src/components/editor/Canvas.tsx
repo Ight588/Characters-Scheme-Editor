@@ -2,16 +2,22 @@
 
 /* Бесконечный холст: панорама, Alt+колесо — зум, фоновые слои, элементы */
 
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useRef } from "react";
 import { useEditor } from "@/lib/editor/store";
-import { BgImageFit, CardElement, ImageElement, TextElement } from "@/lib/editor/types";
+import {
+  BgImageFit,
+  CanvasElement,
+  CardElement,
+  ImageElement,
+  TextElement,
+} from "@/lib/editor/types";
 import { CardView } from "./elements/CardElement";
 import { ArrowLayer } from "./elements/ArrowLayer";
 import { ImageView } from "./elements/ImageElement";
 import { TextView } from "./elements/TextElement";
 import { contentBBox, computeArrowGeometries } from "@/lib/editor/geometry";
 
-const BG_WORLD_SPAN = 40000;
+const EXPORT_PAD = 40;
 
 const BG_REPEAT: Record<BgImageFit, string> = {
   tile: "repeat",
@@ -24,6 +30,7 @@ export function Canvas() {
   const view = useEditor((s) => s.view);
   const order = useEditor((s) => s.order);
   const elements = useEditor((s) => s.elements);
+  const rects = useEditor((s) => s.rects);
   const settings = useEditor((s) => s.settings);
   const exportMode = useEditor((s) => s.exportMode);
   const exportOffset = useEditor((s) => s.exportOffset);
@@ -33,20 +40,8 @@ export function Canvas() {
   const openMenu = useEditor((s) => s.openMenu);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panState = useRef<{ x: number; y: number } | null>(null);
-  const [viewportSize, setViewportSize] = React.useState({ w: 0, h: 0 });
 
   const interactive = !exportMode;
-
-  /* следим за размером вьюпорта */
-  React.useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const update = () => setViewportSize({ w: el.clientWidth, h: el.clientHeight });
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -114,11 +109,11 @@ export function Canvas() {
     });
   };
 
-  const worldTransform = useMemo(() => {
-    if (exportMode) return undefined;
-    if (viewportSize.w === 0 || viewportSize.h === 0) return "translate(-10000px, -10000px)";
-    return `translate(${viewportSize.w / 2 + view.x}px, ${viewportSize.h / 2 + view.y}px) scale(${view.scale})`;
-  }, [view, exportMode, viewportSize]);
+  // Начало мира закреплено в центре viewport через left/top: 50%. Так элементы
+  // видны уже на первом кадре и не зависят от ResizeObserver.
+  const worldTransform = exportMode
+    ? "none"
+    : `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
 
   /* сдвиг содержимого для экспорта */
   const exportTransform = exportMode
@@ -129,8 +124,9 @@ export function Canvas() {
     ? {
         backgroundImage: `url(${settings.bgImage})`,
         backgroundRepeat: BG_REPEAT[settings.bgFit],
-        backgroundSize: settings.bgFit === "fill" ? "100% 100%" : undefined,
-        opacity: settings.bgOpacity / 100,
+        backgroundPosition: "center",
+        backgroundSize: settings.bgFit === "fill" ? "cover" : undefined,
+        opacity: Math.min(100, Math.max(0, settings.bgOpacity)) / 100,
       }
     : {};
 
@@ -151,15 +147,28 @@ export function Canvas() {
       id="editor-viewport"
       ref={viewportRef}
       className="editor-dots absolute inset-0 overflow-hidden"
-      style={{ cursor: interactive ? "default" : "wait" }}
+      style={{
+        cursor: interactive ? "default" : "wait",
+        backgroundColor: settings.bgColor,
+      }}
       onPointerDown={onPointerDown}
       onWheel={onWheel}
       onContextMenu={onContextMenu}
     >
+      {/* В обычном режиме фон покрывает viewport и всегда остаётся видимым. */}
+      {settings.bgImage && interactive && (
+        <div className="absolute inset-0 pointer-events-none" style={bgStyle} />
+      )}
+
       <div
         id="editor-world"
-        className="absolute left-0 top-0"
-        style={{ transform: worldTransform ?? "none", transformOrigin: "0 0" }}
+        className="absolute"
+        style={{
+          left: exportMode ? 0 : "50%",
+          top: exportMode ? 0 : "50%",
+          transform: worldTransform,
+          transformOrigin: "0 0",
+        }}
       >
         <div
           id="editor-world-content"
@@ -167,26 +176,10 @@ export function Canvas() {
           style={{ transform: exportTransform, width: 0, height: 0 }}
         >
           {/* фоновое изображение (в мировых координатах) */}
-          {settings.bgImage && (
+          {settings.bgImage && exportMode && (
             <div
               className="absolute pointer-events-none"
-              style={
-                exportMode
-                  ? {
-                      ...bgStyle,
-                      left: 0,
-                      top: 0,
-                      width: exportBBoxW(),
-                      height: exportBBoxH(),
-                    }
-                  : {
-                      ...bgStyle,
-                      left: -BG_WORLD_SPAN / 2,
-                      top: -BG_WORLD_SPAN / 2,
-                      width: BG_WORLD_SPAN,
-                      height: BG_WORLD_SPAN,
-                    }
-              }
+              style={{ ...bgStyle, ...exportBackgroundRect(elements, rects) }}
             />
           )}
 
@@ -218,14 +211,17 @@ export function Canvas() {
   );
 }
 
-/* размеры экспортной области считаются из текущего состояния */
-function exportBBoxW(): number {
-  const s = useEditor.getState();
-  const g = computeArrowGeometries(s.elements, s.rects);
-  return Math.ceil(contentBBox(s.elements, s.rects, g).w) + 80;
-}
-function exportBBoxH(): number {
-  const s = useEditor.getState();
-  const g = computeArrowGeometries(s.elements, s.rects);
-  return Math.ceil(contentBBox(s.elements, s.rects, g).h) + 80;
+/** Фон экспорта точно покрывает bbox вместе с полями из exporters.ts. */
+function exportBackgroundRect(
+  elements: Record<string, CanvasElement>,
+  rects: Record<string, { w: number; h: number }>
+): React.CSSProperties {
+  const geometries = computeArrowGeometries(elements, rects);
+  const bbox = contentBBox(elements, rects, geometries);
+  return {
+    left: bbox.x - EXPORT_PAD,
+    top: bbox.y - EXPORT_PAD,
+    width: Math.ceil(bbox.w) + EXPORT_PAD * 2,
+    height: Math.ceil(bbox.h) + EXPORT_PAD * 2,
+  };
 }
