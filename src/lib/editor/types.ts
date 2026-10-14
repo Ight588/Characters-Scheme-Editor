@@ -102,6 +102,35 @@ export type SavedArrowStyle = {
 
 export type View = { x: number; y: number; scale: number };
 
+/** Допустимый диапазон масштаба холста. */
+export const MIN_VIEW_SCALE = 0.2;
+export const MAX_VIEW_SCALE = 3;
+export const DEFAULT_VIEW: View = { x: 0, y: 0, scale: 1 };
+
+export function clampViewScale(scale: number): number {
+  if (!Number.isFinite(scale)) return DEFAULT_VIEW.scale;
+  return Math.min(MAX_VIEW_SCALE, Math.max(MIN_VIEW_SCALE, scale));
+}
+
+/**
+ * Нормализует вид из IndexedDB/JSON. Старые или вручную изменённые файлы
+ * не должны оставлять холст с scale=0/NaN, при котором элементы невидимы.
+ */
+export function normalizeView(view?: Partial<View> | null): View {
+  return {
+    x: Number.isFinite(view?.x) ? Number(view?.x) : DEFAULT_VIEW.x,
+    y: Number.isFinite(view?.y) ? Number(view?.y) : DEFAULT_VIEW.y,
+    scale: clampViewScale(Number(view?.scale)),
+  };
+}
+
+export function normalizePoint(point?: Partial<Point> | null): Point {
+  return {
+    x: Number.isFinite(point?.x) ? Number(point?.x) : 0,
+    y: Number.isFinite(point?.y) ? Number(point?.y) : 0,
+  };
+}
+
 export type PersistedState = {
   version: number;
   title: string;
@@ -120,6 +149,29 @@ export const DEFAULT_SETTINGS: CanvasSettings = {
   bgFit: "tile",
   bgOpacity: 100,
 };
+
+const BG_IMAGE_FITS: BgImageFit[] = ["tile", "tile-x", "tile-y", "fill"];
+
+export function normalizeCanvasSettings(
+  settings?: Partial<CanvasSettings> | null
+): CanvasSettings {
+  const opacity = Number(settings?.bgOpacity);
+  return {
+    bgColor:
+      typeof settings?.bgColor === "string" && settings.bgColor.trim()
+        ? settings.bgColor
+        : DEFAULT_SETTINGS.bgColor,
+    ...(typeof settings?.bgImage === "string" && settings.bgImage
+      ? { bgImage: settings.bgImage }
+      : {}),
+    bgFit: BG_IMAGE_FITS.includes(settings?.bgFit as BgImageFit)
+      ? (settings?.bgFit as BgImageFit)
+      : DEFAULT_SETTINGS.bgFit,
+    bgOpacity: Number.isFinite(opacity)
+      ? Math.min(100, Math.max(0, opacity))
+      : DEFAULT_SETTINGS.bgOpacity,
+  };
+}
 
 export const DEFAULT_ARROW_COLOR = "#b3574f";
 export const STATUS_COLORS = [

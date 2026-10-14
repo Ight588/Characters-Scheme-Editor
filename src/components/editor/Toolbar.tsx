@@ -3,7 +3,7 @@
 /* Верхняя панель: название схемы и главные кнопки (image 1) */
 
 import React, { useEffect, useRef } from "react";
-import { Undo2, Redo2, Plus, CreditCard, Settings } from "lucide-react";
+import { Undo2, Redo2, Plus, CreditCard, Settings, LocateFixed } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
 
 export function Toolbar() {
@@ -14,11 +14,13 @@ export function Toolbar() {
   const past = useEditor((s) => s.past.length);
   const future = useEditor((s) => s.future.length);
   const openMenu = useEditor((s) => s.openMenu);
+  const resetView = useEditor((s) => s.resetView);
   const toggleUiHidden = useEditor((s) => s.toggleUiHidden);
   const uiHidden = useEditor((s) => s.uiHidden);
   const setEditing = useEditor((s) => s.setEditing);
   const editing = useEditor((s) => s.editing);
   const titleRef = useRef<HTMLDivElement | null>(null);
+  const [titleEditWidth, setTitleEditWidth] = React.useState<number | null>(null);
   const isEditingTitle = editing?.id === "__title__";
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export function Toolbar() {
     const text = (titleRef.current?.textContent ?? "").trim();
     if (text !== title) setTitle(text);
     setEditing(null);
+    setTitleEditWidth(null);
   };
 
   const openAddMenu = (e: React.MouseEvent) => {
@@ -76,7 +79,8 @@ export function Toolbar() {
             ref={titleRef}
             contentEditable
             suppressContentEditableWarning
-            className="editable-active font-bold text-[19px] sm:text-[22px] leading-tight text-[var(--c-headings)] min-w-[180px] max-w-full border-b-2 border-[#9a7c5e]/60 pb-1 break-words"
+            className="editable-active font-bold text-[19px] sm:text-[22px] leading-tight text-[var(--c-headings)] max-w-full border-b-2 border-[#9a7c5e]/60 pb-1 break-words"
+            style={{ width: titleEditWidth ?? undefined, minWidth: titleEditWidth ?? undefined }}
             onBlur={commitTitle}
             onKeyDown={(e) => {
               e.stopPropagation();
@@ -86,6 +90,7 @@ export function Toolbar() {
               }
               if (e.key === "Escape") {
                 setEditing(null);
+                setTitleEditWidth(null);
               }
             }}
           />
@@ -94,7 +99,10 @@ export function Toolbar() {
             ref={titleRef}
             className="editable-hover font-bold text-[19px] sm:text-[22px] leading-tight text-[var(--c-headings)] border-b-2 border-[#9a7c5e]/60 pb-1 w-fit max-w-full break-words"
             title="Нажмите, чтобы переименовать"
-            onClick={() => setEditing({ id: "__title__", field: "title" })}
+            onClick={() => {
+              setTitleEditWidth(titleRef.current?.getBoundingClientRect().width ?? null);
+              setEditing({ id: "__title__", field: "title" });
+            }}
           >
             {title || <span className="opacity-80">Введите название...</span>}
           </div>
@@ -118,6 +126,13 @@ export function Toolbar() {
           disabled={future === 0}
         >
           <Redo2 size={17} />
+        </button>
+        <button
+          className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
+          title="Вернуться к началу координат"
+          onClick={resetView}
+        >
+          <LocateFixed size={17} />
         </button>
         <button
           className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"

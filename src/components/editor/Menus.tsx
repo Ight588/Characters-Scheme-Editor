@@ -246,6 +246,7 @@ function useSettingsItems(menu: MenuState): MenuItem[] {
   const expandAllCards = useEditor((s) => s.expandAllCards);
   const collapseAllCards = useEditor((s) => s.collapseAllCards);
   const openPanel = useEditor((s) => s.openPanel);
+  const resetView = useEditor((s) => s.resetView);
   const clearCanvas = useEditor((s) => s.clearCanvas);
   void menu;
 
@@ -254,6 +255,7 @@ function useSettingsItems(menu: MenuState): MenuItem[] {
     { label: "Открыть файл...", icon: MenuIcons.open, action: openFile },
     { label: "Развернуть все карточки", icon: MenuIcons.expand, action: expandAllCards },
     { label: "Свернуть все карточки", icon: MenuIcons.collapse, action: collapseAllCards },
+    { label: "К началу координат", icon: MenuIcons.origin, action: resetView },
     { label: "Поделиться холстом...", icon: MenuIcons.share, action: share },
     {
       label: "Изменить фон холста",
