@@ -5,7 +5,11 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { CircleUserRound } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
-import { CardElement, CARD_COMPACT_MAX_WIDTH } from "@/lib/editor/types";
+import {
+  CardElement,
+  CARD_COMPACT_MAX_WIDTH,
+  CARD_EXPANDED_WIDTH,
+} from "@/lib/editor/types";
 import { requestAvatar } from "@/lib/editor/filepicker";
 import { EditableText } from "../EditableText";
 
@@ -78,6 +82,10 @@ export function CardView({ card }: { card: CardElement }) {
   const setRect = useEditor((s) => s.setRect);
   const exportMode = useEditor((s) => s.exportMode);
   const selectedId = useEditor((s) => s.selectedId);
+  const selectedGroupId = useEditor((s) => {
+    const selected = s.selectedId ? s.elements[s.selectedId] : undefined;
+    return selected?.kind === "card" ? selected.groupId : undefined;
+  });
   const select = useEditor((s) => s.select);
   const openMenu = useEditor((s) => s.openMenu);
   const setEditing = useEditor((s) => s.setEditing);
@@ -156,6 +164,9 @@ export function CardView({ card }: { card: CardElement }) {
     />
   );
 
+  const groupSelected = Boolean(card.groupId && card.groupId === selectedGroupId);
+  const outlined = !exportMode && (selectedId === card.id || groupSelected);
+
   const statusChip = card.status && (
     <span
       className="status-chip"
@@ -197,8 +208,10 @@ export function CardView({ card }: { card: CardElement }) {
       ref={boxRef}
       data-element-id={card.id}
       data-card-variant={collapsed ? "compact" : "expanded"}
-      className={`p-card no-select absolute top-0 left-0 w-max ${selectedId === card.id && !exportMode ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
+      data-group-selected={groupSelected || undefined}
+      className={`p-card no-select absolute top-0 left-0 ${collapsed ? "w-max" : ""} ${outlined ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
       style={{
+        width: collapsed ? undefined : CARD_EXPANDED_WIDTH,
         maxWidth: collapsed ? CARD_COMPACT_MAX_WIDTH : undefined,
         transform: `translate(${card.x}px, ${card.y}px)`,
       }}

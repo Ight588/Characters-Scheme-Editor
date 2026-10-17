@@ -5,6 +5,15 @@
 import React, { useEffect, useRef } from "react";
 import { Undo2, Redo2, Plus, CreditCard, Settings, LocateFixed } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
+import { TextFormatToolbar } from "./elements/TextElement";
+
+function titleHasText(html: string): boolean {
+  return html
+    .replace(/<br\s*\/?\s*>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .trim().length > 0;
+}
 
 export function Toolbar() {
   const title = useEditor((s) => s.title);
@@ -21,28 +30,34 @@ export function Toolbar() {
   const editing = useEditor((s) => s.editing);
   const titleRef = useRef<HTMLDivElement | null>(null);
   const [titleEditWidth, setTitleEditWidth] = React.useState<number | null>(null);
+  const [titleToolbarPosition, setTitleToolbarPosition] = React.useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const isEditingTitle = editing?.id === "__title__";
 
   useEffect(() => {
     if (isEditingTitle && titleRef.current) {
-      const el = titleRef.current;
-      el.textContent = title;
-      el.focus();
+      const element = titleRef.current;
+      element.innerHTML = title;
+      element.focus();
       const range = document.createRange();
-      range.selectNodeContents(el);
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      range.selectNodeContents(element);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
     }
-     
-  }, [isEditingTitle]);
+  }, [isEditingTitle, title]);
 
   const commitTitle = () => {
     if (!isEditingTitle) return;
-    const text = (titleRef.current?.textContent ?? "").trim();
-    if (text !== title) setTitle(text);
+    const html = (titleRef.current?.innerHTML ?? "").trim();
+    const nextTitle = titleHasText(html) ? html : "";
+    if (nextTitle !== title) setTitle(nextTitle);
     setEditing(null);
     setTitleEditWidth(null);
+    setTitleToolbarPosition(null);
   };
 
   const openAddMenu = (e: React.MouseEvent) => {
@@ -74,6 +89,7 @@ export function Toolbar() {
       <div className="pointer-events-auto min-w-0 flex-1 basis-[240px] pr-[32px]">
         {isEditingTitle ? (
           <div
+            key="title-editor"
             ref={titleRef}
             contentEditable
             suppressContentEditableWarning
@@ -89,23 +105,42 @@ export function Toolbar() {
               if (e.key === "Escape") {
                 setEditing(null);
                 setTitleEditWidth(null);
+                setTitleToolbarPosition(null);
               }
             }}
           />
         ) : (
           <div
+            key="title-display"
             ref={titleRef}
             className="editable-hover font-bold text-[19px] sm:text-[22px] leading-tight text-[var(--c-headings)] border-b-2 border-[#9a7c5e]/60 pb-1 w-fit max-w-full break-words"
             title="Дважды нажмите, чтобы редактировать"
             onDoubleClick={() => {
-              setTitleEditWidth(titleRef.current?.getBoundingClientRect().width ?? null);
+              const bounds = titleRef.current?.getBoundingClientRect();
+              setTitleEditWidth(bounds?.width ?? null);
+              setTitleToolbarPosition(
+                bounds ? { left: bounds.left, top: bounds.bottom + 8 } : null
+              );
               setEditing({ id: "__title__", field: "title" });
             }}
           >
-            {title || <span className="opacity-80">Введите название...</span>}
+            {titleHasText(title) ? (
+              <span dangerouslySetInnerHTML={{ __html: title }} />
+            ) : (
+              <span className="opacity-80">Введите название...</span>
+            )}
           </div>
         )}
       </div>
+
+      {isEditingTitle && titleToolbarPosition && (
+        <TextFormatToolbar
+          position="fixed"
+          placement="below"
+          left={titleToolbarPosition.left}
+          top={titleToolbarPosition.top}
+        />
+      )}
 
       {/* Кнопки */}
       <div

@@ -71,6 +71,7 @@ type EditorState = {
   menu: MenuState | null;
   panel: PanelState | null;
   shareOpen: boolean;
+  clearAllConfirmOpen: boolean;
   clipboard: CardElement | null;
   exportMode: ExportMode;
   exportOffset: Point;
@@ -134,6 +135,7 @@ type EditorState = {
   openMenu: (menu: MenuState | null) => void;
   openPanel: (panel: PanelState | null) => void;
   setShareOpen: (open: boolean) => void;
+  setClearAllConfirmOpen: (open: boolean) => void;
   setExportMode: (mode: ExportMode) => void;
   setExportOffset: (p: Point) => void;
   toggleUiHidden: () => void;
@@ -229,6 +231,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   menu: null,
   panel: null,
   shareOpen: false,
+  clearAllConfirmOpen: false,
   clipboard: null,
   exportMode: null,
   exportOffset: { x: 0, y: 0 },
@@ -747,6 +750,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       menu: null,
       panel: null,
       shareOpen: false,
+      clearAllConfirmOpen: false,
       clipboard: null,
       exportMode: null,
       exportOffset: { x: 0, y: 0 },
@@ -823,9 +827,20 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   openPanel: (panel) => set({ panel, menu: null }),
 
-  setShareOpen: (open) => set({ shareOpen: open, menu: null }),
+  setShareOpen: (open) =>
+    set({ shareOpen: open, clearAllConfirmOpen: false, menu: null }),
 
-  setExportMode: (mode) => set({ exportMode: mode, shareOpen: false, menu: null, panel: null }),
+  setClearAllConfirmOpen: (open) =>
+    set({ clearAllConfirmOpen: open, shareOpen: false, menu: null, panel: null }),
+
+  setExportMode: (mode) =>
+    set({
+      exportMode: mode,
+      shareOpen: false,
+      clearAllConfirmOpen: false,
+      menu: null,
+      panel: null,
+    }),
 
   setExportOffset: (p) => set({ exportOffset: p }),
 

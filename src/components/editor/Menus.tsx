@@ -261,7 +261,7 @@ function useSettingsItems(menu: MenuState): MenuItem[] {
   const collapseAllCards = useEditor((s) => s.collapseAllCards);
   const openPanel = useEditor((s) => s.openPanel);
   const clearCanvas = useEditor((s) => s.clearCanvas);
-  const clearAllData = useEditor((s) => s.clearAllData);
+  const setClearAllConfirmOpen = useEditor((s) => s.setClearAllConfirmOpen);
   void menu;
 
   return [
@@ -280,10 +280,7 @@ function useSettingsItems(menu: MenuState): MenuItem[] {
       label: "Очистить все данные",
       icon: MenuIcons.delete,
       warn: true,
-      action: () => {
-        clearAllData();
-        toast.success("Все данные удалены");
-      },
+      action: () => setClearAllConfirmOpen(true),
     },
   ];
 }
@@ -320,6 +317,62 @@ function useSimpleItems(menu: MenuState, kind: "image" | "text"): MenuItem[] {
       action: () => removeElement(menu.elementId!),
     },
   ];
+}
+
+/* ---------------- Подтверждение полной очистки ---------------- */
+
+export function ClearAllDataDialog() {
+  const open = useEditor((s) => s.clearAllConfirmOpen);
+  const setOpen = useEditor((s) => s.setClearAllConfirmOpen);
+  const clearAllData = useEditor((s) => s.clearAllData);
+
+  if (!open) return null;
+
+  return (
+    <div
+      data-clear-all-dialog
+      className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/30 p-4"
+      onPointerDown={() => setOpen(false)}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="clear-all-title"
+        aria-describedby="clear-all-description"
+        className="export-dialog w-full max-w-[390px] no-select"
+        style={{ padding: "var(--p-20)" }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <h2 id="clear-all-title" className="mb-3 text-[16px] font-bold text-[var(--c-headings)]">
+          Удалить все данные?
+        </h2>
+        <p id="clear-all-description" className="mb-5 text-[13px] leading-[1.45] text-[#AE1010]">
+          Это действие необратимо. Будут удалены все элементы холста, заголовок, фон,
+          сохранённые статусы и стили, история действий и локальные данные.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            autoFocus
+            className="h-8 rounded-[5px] px-3 text-[12px] text-[var(--c-cards-labels)] hover:bg-black/5"
+            onClick={() => setOpen(false)}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="btn-warn h-8 rounded-[5px] px-3 text-[12px] font-semibold text-[#AE1010]"
+            onClick={() => {
+              clearAllData();
+              toast.success("Все данные удалены");
+            }}
+          >
+            Удалить все данные
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ---------------- Диалог «Поделиться холстом» ---------------- */
@@ -458,6 +511,7 @@ export function MenusHost() {
       {panel?.type === "arrow-style" && <ArrowStylePanel id={panel.id} screen={panel.screen} />}
       {panel?.type === "canvas-bg" && <CanvasBgPanel screen={panel.screen} />}
       <ShareDialog />
+      <ClearAllDataDialog />
     </>
   );
 

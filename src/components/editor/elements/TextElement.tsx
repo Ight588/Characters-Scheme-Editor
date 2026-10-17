@@ -11,7 +11,17 @@ import { useElementRotation } from "./useElementRotation";
 
 /* -------- Панель форматирования выделенного текста -------- */
 
-export function TextFormatToolbar({ top, left }: { top: number; left: number }) {
+export function TextFormatToolbar({
+  top,
+  left,
+  position = "absolute",
+  placement = "above",
+}: {
+  top: number;
+  left: number;
+  position?: "absolute" | "fixed";
+  placement?: "above" | "below";
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [, force] = React.useReducer((n: number) => n + 1, 0);
 
@@ -42,21 +52,22 @@ export function TextFormatToolbar({ top, left }: { top: number; left: number }) 
   return (
     <div
       ref={ref}
-      className="editor-menu flex items-center gap-1"
+      data-text-format-toolbar
+      className="editor-menu pointer-events-auto flex items-center gap-1"
       style={{
-        position: "absolute",
+        position,
         left,
         top,
         padding: "4px",
         zIndex: 50,
-        transform: "translateY(-110%)",
+        transform: placement === "above" ? "translateY(-110%)" : undefined,
       }}
       onPointerDown={(event) => event.preventDefault()}
       onContextMenu={(event) => event.preventDefault()}
     >
       <button
         className={buttonClass(isActive("bold"))}
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.preventDefault();
           command("bold");
         }}
@@ -66,7 +77,7 @@ export function TextFormatToolbar({ top, left }: { top: number; left: number }) 
       </button>
       <button
         className={buttonClass(isActive("italic"))}
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.preventDefault();
           command("italic");
         }}
@@ -76,7 +87,7 @@ export function TextFormatToolbar({ top, left }: { top: number; left: number }) 
       </button>
       <button
         className={buttonClass(isActive("underline"))}
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.preventDefault();
           command("underline");
         }}
@@ -97,7 +108,7 @@ export function TextFormatToolbar({ top, left }: { top: number; left: number }) 
       </label>
       <button
         className={buttonClass(isActive("insertUnorderedList"))}
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.preventDefault();
           command("insertUnorderedList");
         }}
@@ -268,7 +279,12 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
           fontSize: text.fontSize,
         }}
         onPointerDown={(event) => {
-          if (!interactiveElement || event.button !== 0 || isEditing) return;
+          const activeEditing = useEditor.getState().editing;
+          if (
+            !interactiveElement ||
+            event.button !== 0 ||
+            (activeEditing?.id === text.id && activeEditing.field === "html")
+          ) return;
           event.stopPropagation();
           select(text.id);
           onPointerDown(event, dragMove);

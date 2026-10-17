@@ -6,6 +6,7 @@ import {
   Point,
   TextElement,
   CARD_COMPACT_MAX_WIDTH,
+  CARD_EXPANDED_WIDTH,
 } from "./types";
 
 export type Size = { w: number; h: number };
@@ -67,13 +68,13 @@ export function getArrowDescriptionRect(from: Point, to: Point, size: Size): Rec
 }
 
 /**
- * Прямоугольник карточки. Реальные адаптивные размеры всегда поступают от
- * ResizeObserver; fallback используется только до первого измерения DOM.
+ * Прямоугольник карточки. Реальная высота и ширина компактной версии поступают
+ * от ResizeObserver; fallback используется только до первого измерения DOM.
  */
 export function getCardRect(card: CardElement, rects: Record<string, Size>): Rect {
   const fallback: Size = card.collapsed
     ? { w: CARD_COMPACT_MAX_WIDTH, h: 180 }
-    : { w: 300, h: 160 };
+    : { w: CARD_EXPANDED_WIDTH, h: 160 };
   const s = rects[card.id] ?? fallback;
   return { x: card.x, y: card.y, w: s.w, h: s.h };
 }

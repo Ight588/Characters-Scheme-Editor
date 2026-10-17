@@ -259,3 +259,4 @@ export const ARROW_THICKNESS_PX: Record<ArrowThickness, number> = {
 };
 
 export const CARD_COMPACT_MAX_WIDTH = 200;
+export const CARD_EXPANDED_WIDTH = 450;
