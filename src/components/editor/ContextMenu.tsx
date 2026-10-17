@@ -29,6 +29,18 @@ import { useEditor, MenuState } from "@/lib/editor/store";
 import { requestOpenFile } from "@/lib/editor/filepicker";
 import { exportWorkingFile } from "@/lib/editor/exporters";
 
+function richTextToPlainText(value: string): string {
+  return value
+    .replace(/<br\s*\/?\s*>/gi, " ")
+    .replace(/<\/li\s*>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .trim();
+}
+
 export type MenuItem = {
   label: string;
   icon?: React.ReactNode;
@@ -264,7 +276,7 @@ function StatusesList({ state }: { state: MenuState }) {
             style={{ borderBottom: i === savedStatuses.length - 1 ? "none" : undefined }}
             onClick={() => state.elementId && applySavedStatus(state.elementId, item.id)}
           >
-            {i + 1}. {item.text || "Статус"}
+            {i + 1}. {richTextToPlainText(item.text) || "Статус"}
           </button>
           <button
             className="menu-item--warn p-1.5 rounded hover:bg-black/5"

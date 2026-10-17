@@ -366,6 +366,9 @@ export function Canvas() {
             />
           )}
 
+          {/* Стрелки и их подписи всегда лежат ниже карточек. */}
+          <ArrowLayer interactive={interactive} />
+
           {images.map((img) => (
             <ImageView key={img.id} image={img} interactive={interactive} />
           ))}
@@ -375,9 +378,6 @@ export function Canvas() {
           {texts.map((text) => (
             <TextView key={text.id} text={text} interactive={interactive} />
           ))}
-
-          {/* стрелки поверх карточек, чтобы наконечники были видны у граней */}
-          <ArrowLayer interactive={interactive} />
         </div>
       </div>
 

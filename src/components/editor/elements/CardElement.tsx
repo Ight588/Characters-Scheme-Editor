@@ -3,12 +3,12 @@
 /* Карточка персонажа: свёрнутая и развёрнутая версии */
 
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { CircleUserRound } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
 import {
   CardElement,
   CARD_COMPACT_MAX_WIDTH,
   CARD_EXPANDED_WIDTH,
+  DEFAULT_STATUS_COLOR,
 } from "@/lib/editor/types";
 import { requestAvatar } from "@/lib/editor/filepicker";
 import { EditableText } from "../EditableText";
@@ -82,48 +82,51 @@ export function useElementDrag(kind: "move" | "arrow-body" | "arrow-end") {
 }
 
 export function CardView({ card }: { card: CardElement }) {
-  const updateElement = useEditor((s) => s.updateElement);
-  const setRect = useEditor((s) => s.setRect);
-  const exportMode = useEditor((s) => s.exportMode);
-  const selected = useEditor((s) => s.selectedIds.includes(card.id));
-  const groupSelected = useEditor((s) =>
+  const updateElement = useEditor((state) => state.updateElement);
+  const setRect = useEditor((state) => state.setRect);
+  const exportMode = useEditor((state) => state.exportMode);
+  const editing = useEditor((state) => state.editing);
+  const selected = useEditor((state) => state.selectedIds.includes(card.id));
+  const groupSelected = useEditor((state) =>
     Boolean(
       card.groupId &&
-        s.selectedIds.some((selectedId) => s.elements[selectedId]?.groupId === card.groupId)
+        state.selectedIds.some(
+          (selectedId) => state.elements[selectedId]?.groupId === card.groupId
+        )
     )
   );
-  const select = useEditor((s) => s.select);
-  const toggleSelection = useEditor((s) => s.toggleSelection);
-  const openMenu = useEditor((s) => s.openMenu);
-  const setEditing = useEditor((s) => s.setEditing);
+  const select = useEditor((state) => state.select);
+  const toggleSelection = useEditor((state) => state.toggleSelection);
+  const openMenu = useEditor((state) => state.openMenu);
   const { onPointerDown, wasDrag } = useElementDrag("move");
   const boxRef = useRef<HTMLDivElement | null>(null);
 
-  const collapsed = exportMode
-    ? exportMode.mode === "mini"
-    : card.collapsed;
+  const collapsed = exportMode ? exportMode.mode === "mini" : card.collapsed;
+  const cardEditing = editing?.id === card.id;
 
   useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setRect(card.id, el.offsetWidth, el.offsetHeight);
+    const element = boxRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      setRect(card.id, element.offsetWidth, element.offsetHeight);
     });
-    ro.observe(el);
-    setRect(card.id, el.offsetWidth, el.offsetHeight);
-    return () => ro.disconnect();
+    observer.observe(element);
+    setRect(card.id, element.offsetWidth, element.offsetHeight);
+    return () => observer.disconnect();
   }, [card.id, collapsed, setRect]);
 
   const dragMove = useMemo(
-    () => (dxW: number, dyW: number) => {
-      const el = useEditor.getState().elements[card.id];
-      if (el) useEditor.getState().moveElement(card.id, el.x + dxW, el.y + dyW);
+    () => (dxWorld: number, dyWorld: number) => {
+      const element = useEditor.getState().elements[card.id];
+      if (element) {
+        useEditor.getState().moveElement(card.id, element.x + dxWorld, element.y + dyWorld);
+      }
     },
     [card.id]
   );
 
   const handlePointerDown = (event: React.PointerEvent) => {
-    if (useEditor.getState().editing) return; // не таскаем во время редактирования текста
+    if (useEditor.getState().editing) return;
     if (event.shiftKey) {
       event.stopPropagation();
       toggleSelection(card.id);
@@ -133,68 +136,77 @@ export function CardView({ card }: { card: CardElement }) {
     onPointerDown(event, dragMove);
   };
 
-  const statusStyle: React.CSSProperties | undefined = card.status
-    ? {
-        background: card.status.color,
-        color: "#161414",
-        ...(collapsed
-          ? { maxWidth: "100%", whiteSpace: "normal", overflowWrap: "anywhere" }
-          : {}),
-      }
-    : undefined;
-
   const avatar = (
     <div
-      className="shrink-0 rounded-full overflow-hidden bg-[#d9c9be] flex items-end justify-center cursor-pointer group/av relative"
-      style={{ width: collapsed ? 64 : 72, height: collapsed ? 64 : 72 }}
+      className="card-avatar group/av relative flex shrink-0 cursor-pointer items-end justify-center overflow-hidden rounded-full"
       title="Нажмите, чтобы загрузить аватар"
       onPointerDown={(event) => {
         if (event.pointerType !== "touch" && !event.shiftKey) event.stopPropagation();
       }}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (e.shiftKey || exportMode) return;
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.shiftKey || exportMode) return;
         requestAvatar(card.id);
       }}
     >
-      {card.avatar ? (
-         
-        <img src={card.avatar} alt={`Аватар: ${card.name}`} className="w-full h-full object-cover" draggable={false} />
-      ) : (
-        <CircleUserRound size={collapsed ? 58 : 64} strokeWidth={0.8} className="text-[#c2ada0] -mb-0.5" />
+      {card.avatar && (
+        <img
+          src={card.avatar}
+          alt={`Аватар: ${card.name}`}
+          className="h-full w-full object-cover"
+          draggable={false}
+        />
       )}
     </div>
   );
 
   const years = (
-    <EditableText
-      id={card.id}
-      field="years"
-      value={card.years}
-      onChange={(v) => updateElement(card.id, { years: v })}
-      wrap={collapsed}
-      className={`text-center text-[var(--cards-age)] ${collapsed ? "max-w-full break-all" : ""} ${card.years ? "opacity-70" : "opacity-40"}`}
-      placeholder="Годы…"
-    />
+    <div className="card-years">
+      <EditableText
+        id={card.id}
+        field="years"
+        value={card.years}
+        onChange={(value) => updateElement(card.id, { years: value })}
+        rich
+        placeholder="Годы…"
+        className="block max-w-full whitespace-nowrap text-center"
+      />
+    </div>
   );
 
-  const outlined = !exportMode && (selected || groupSelected);
+  const restoreMissingStatus = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.isContentEditable) active.blur();
+    const state = useEditor.getState();
+    state.pushHistory();
+    state.updateElement(card.id, {
+      status: { text: "Статус", color: DEFAULT_STATUS_COLOR },
+    });
+    state.setEditing({ id: card.id, field: "statusText" });
+  };
 
-  const statusChip = card.status && (
-    <span
+  const statusChip = card.status ? (
+    <div
       data-status-card-id={card.id}
-      className="status-chip"
-      style={statusStyle}
+      className={`status-chip ${collapsed ? "status-chip--compact" : "status-chip--expanded"}`}
+      style={{
+        background:
+          card.status.color === DEFAULT_STATUS_COLOR
+            ? "rgba(242, 246, 118, 0.3)"
+            : card.status.color,
+      }}
       onPointerDown={(event) => {
         if (event.pointerType !== "touch" && !event.shiftKey) event.stopPropagation();
       }}
-      onContextMenu={(e) => {
+      onContextMenu={(event) => {
         if (exportMode) return;
-        e.preventDefault();
-        e.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
         openMenu({
           type: "status",
-          screen: { x: e.clientX, y: e.clientY },
+          screen: { x: event.clientX, y: event.clientY },
           world: { x: 0, y: 0 },
           elementId: card.id,
         });
@@ -204,32 +216,44 @@ export function CardView({ card }: { card: CardElement }) {
         id={card.id}
         field="statusText"
         value={card.status.text}
-        onChange={(v) =>
-          updateElement(card.id, { status: { ...card.status!, text: v } })
+        onChange={(value) =>
+          updateElement(card.id, { status: { ...card.status!, text: value } })
         }
-        wrap={collapsed}
-        style={{
-          display: "inline-block",
-          minWidth: 24,
-          maxWidth: "100%",
-          overflowWrap: "anywhere",
-          textAlign: "center",
-        }}
+        rich
+        wrap
+        className="block max-w-full text-center"
       />
-    </span>
-  );
+    </div>
+  ) : !exportMode && cardEditing ? (
+    <button
+      type="button"
+      data-text-format-toolbar
+      data-missing-status
+      className={`status-chip status-chip--missing ${
+        collapsed ? "status-chip--compact" : "status-chip--expanded"
+      }`}
+      onPointerDown={restoreMissingStatus}
+      title="Восстановить статус"
+    >
+      (отсутствует)
+    </button>
+  ) : null;
+
+  const outlined = !exportMode && (selected || groupSelected);
 
   return (
     <div
       ref={boxRef}
       data-element-id={card.id}
       data-card-variant={collapsed ? "compact" : "expanded"}
+      data-card-editing={cardEditing || undefined}
       data-selected={selected || undefined}
       data-group-selected={groupSelected || undefined}
-      className={`p-card no-select absolute top-0 left-0 ${collapsed ? "w-max" : ""} ${outlined ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
+      className={`p-card ${collapsed ? "p-card--compact" : "p-card--expanded"} no-select absolute left-0 top-0 ${
+        outlined ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""
+      }`}
       style={{
-        width: collapsed ? undefined : CARD_EXPANDED_WIDTH,
-        maxWidth: collapsed ? CARD_COMPACT_MAX_WIDTH : undefined,
+        width: collapsed ? CARD_COMPACT_MAX_WIDTH : CARD_EXPANDED_WIDTH,
         transform: `translate(${card.x}px, ${card.y}px)`,
       }}
       onPointerDown={handlePointerDown}
@@ -238,48 +262,50 @@ export function CardView({ card }: { card: CardElement }) {
         event.preventDefault();
         event.stopPropagation();
       }}
-      onContextMenu={(e) => {
+      onContextMenu={(event) => {
         if (exportMode) return;
-        e.preventDefault();
-        e.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
         if (!useEditor.getState().selectedIds.includes(card.id)) select(card.id);
         openMenu({
           type: "card",
-          screen: { x: e.clientX, y: e.clientY },
+          screen: { x: event.clientX, y: event.clientY },
           world: { x: 0, y: 0 },
           elementId: card.id,
         });
       }}
     >
       {collapsed ? (
-        <div className="flex flex-col items-center gap-1.5 px-3 py-4">
+        <>
           {avatar}
-          {years}
           <EditableText
             id={card.id}
             field="name"
             value={card.name}
-            onChange={(v) => updateElement(card.id, { name: v })}
+            onChange={(value) => updateElement(card.id, { name: value })}
             wrap
-            className="font-semibold text-[14px] leading-tight text-center max-w-full"
+            className="card-name block max-w-full text-center"
             style={{ wordBreak: "break-word" }}
           />
+          {years}
           {statusChip}
-        </div>
+        </>
       ) : (
-        <div className="flex gap-3" style={{ padding: "var(--p-16)" }}>
-          <div className="flex shrink-0 flex-col items-center gap-1.5">
+        <>
+          <div className="card-left">
             {avatar}
             {years}
           </div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-start gap-2 flex-wrap">
+          <div className="card-right">
+            <div className="card-heading-row">
               <EditableText
                 id={card.id}
                 field="name"
                 value={card.name}
-                onChange={(v) => updateElement(card.id, { name: v })}
-                className="font-semibold text-[15px] leading-snug"
+                onChange={(value) => updateElement(card.id, { name: value })}
+                wrap
+                className="card-name block max-w-full"
+                style={{ wordBreak: "break-word" }}
               />
               {statusChip}
             </div>
@@ -287,14 +313,15 @@ export function CardView({ card }: { card: CardElement }) {
               id={card.id}
               field="description"
               value={card.description}
-              onChange={(v) => updateElement(card.id, { description: v })}
+              onChange={(value) => updateElement(card.id, { description: value })}
               multiline
+              as="div"
               placeholder="Описание…"
-              className="text-[12px] leading-[1.45] text-[var(--c-cards-text)] flex-1"
+              className="card-description"
               style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
             />
           </div>
-        </div>
+        </>
       )}
     </div>
   );

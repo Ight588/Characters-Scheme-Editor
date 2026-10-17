@@ -15,6 +15,7 @@ import {
   computeArrowGeometries,
   distToRect,
   getArrowDescriptionRect,
+  getArrowDescriptionRotation,
   getCardRect,
 } from "@/lib/editor/geometry";
 import { EditableText } from "../EditableText";
@@ -308,16 +309,19 @@ function ArrowDescription({
     ? Math.min(220, Math.max(24, arrow.label.length * 6))
     : 80;
   const bounds = getArrowDescriptionRect(from, to, measured ?? { w: fallbackWidth, h: 12 });
+  const rotation = getArrowDescriptionRotation(from, to);
 
   return (
     <div
       ref={ref}
       data-arrow-description={arrow.id}
-      className="absolute"
+      data-arrow-description-rotation={rotation}
+      className="absolute font-bold"
       style={{
         left: bounds.x + bounds.w / 2,
         top: bounds.y + bounds.h / 2,
-        transform: "translate(-50%, -50%)",
+        transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+        transformOrigin: "center",
         width: "max-content",
         minWidth: isEditing ? 80 : undefined,
         maxWidth: 220,
