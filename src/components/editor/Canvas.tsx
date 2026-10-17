@@ -40,6 +40,18 @@ export function Canvas() {
   const openMenu = useEditor((s) => s.openMenu);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panState = useRef<{ x: number; y: number } | null>(null);
+  const touchPoints = useRef(new Map<number, { x: number; y: number }>());
+  const pinchState = useRef<{
+    distance: number;
+    midpoint: { x: number; y: number };
+  } | null>(null);
+  const touchGestureConsumed = useRef(false);
+  const longPress = useRef<{
+    pointerId: number;
+    start: { x: number; y: number };
+    timer: number;
+  } | null>(null);
+  const suppressClickUntil = useRef(0);
 
   const interactive = !exportMode;
 
@@ -56,13 +68,171 @@ export function Canvas() {
     []
   );
 
+  const cancelLongPress = () => {
+    if (!longPress.current) return;
+    window.clearTimeout(longPress.current.timer);
+    longPress.current = null;
+  };
+
+  const touchMetrics = () => {
+    const points = [...touchPoints.current.values()];
+    if (points.length < 2) return null;
+    const [first, second] = points;
+    return {
+      distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+      midpoint: {
+        x: (first.x + second.x) / 2,
+        y: (first.y + second.y) / 2,
+      },
+    };
+  };
+
+  const openTouchContextMenu = (target: Element, clientX: number, clientY: number) => {
+    const state = useEditor.getState();
+    const screen = { x: clientX, y: clientY };
+    const statusTarget = target.closest("[data-status-card-id]");
+    const statusCardId = statusTarget?.getAttribute("data-status-card-id");
+    if (statusCardId && state.elements[statusCardId]?.kind === "card") {
+      if (!state.selectedIds.includes(statusCardId)) state.select(statusCardId);
+      state.openMenu({
+        type: "status",
+        screen,
+        world: { x: 0, y: 0 },
+        elementId: statusCardId,
+      });
+      return;
+    }
+
+    const arrowTarget = target.closest("[data-arrow-id], [data-arrow-description]");
+    const arrowId =
+      arrowTarget?.getAttribute("data-arrow-id") ??
+      arrowTarget?.getAttribute("data-arrow-description");
+    if (arrowId && state.elements[arrowId]?.kind === "arrow") {
+      if (!state.selectedIds.includes(arrowId)) state.select(arrowId);
+      state.openMenu({
+        type: "arrow",
+        screen,
+        world: { x: 0, y: 0 },
+        elementId: arrowId,
+      });
+      return;
+    }
+
+    const elementTarget = target.closest("[data-element-id]");
+    const elementId = elementTarget?.getAttribute("data-element-id");
+    const element = elementId ? state.elements[elementId] : undefined;
+    if (element && element.kind !== "arrow") {
+      if (!state.selectedIds.includes(element.id)) state.select(element.id);
+      state.openMenu({
+        type: element.kind,
+        screen,
+        world: { x: 0, y: 0 },
+        elementId: element.id,
+      });
+      return;
+    }
+
+    state.select(null);
+    state.openMenu({
+      type: "canvas",
+      screen,
+      world: screenToWorld(clientX, clientY),
+      sub: null,
+    });
+  };
+
+  const onPointerDownCapture = (event: React.PointerEvent) => {
+    if (!interactive || event.pointerType !== "touch") return;
+    touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (touchPoints.current.size > 1) {
+      cancelLongPress();
+      touchGestureConsumed.current = true;
+      pinchState.current = touchMetrics();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    const target = event.target as Element;
+    if (
+      target.closest(
+        "[data-transform-handle], [data-text-format-toolbar], [contenteditable='true'], input, textarea, select, button"
+      )
+    ) return;
+
+    cancelLongPress();
+    const pointerId = event.pointerId;
+    const start = { x: event.clientX, y: event.clientY };
+    const timer = window.setTimeout(() => {
+      if (longPress.current?.pointerId !== pointerId || touchGestureConsumed.current) return;
+      longPress.current = null;
+      suppressClickUntil.current = Date.now() + 900;
+      navigator.vibrate?.(10);
+      openTouchContextMenu(target, start.x, start.y);
+    }, 550);
+    longPress.current = { pointerId, start, timer };
+  };
+
+  const onPointerMoveCapture = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch" || !touchPoints.current.has(event.pointerId)) return;
+    touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const metrics = touchMetrics();
+    if (pinchState.current && metrics) {
+      const viewport = viewportRef.current?.getBoundingClientRect();
+      if (viewport) {
+        const factor = metrics.distance / pinchState.current.distance;
+        panBy(
+          metrics.midpoint.x - pinchState.current.midpoint.x,
+          metrics.midpoint.y - pinchState.current.midpoint.y
+        );
+        zoomAt(
+          {
+            x: metrics.midpoint.x - viewport.left,
+            y: metrics.midpoint.y - viewport.top,
+          },
+          { w: viewport.width, h: viewport.height },
+          factor
+        );
+      }
+      pinchState.current = metrics;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (touchGestureConsumed.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    const press = longPress.current;
+    if (
+      press?.pointerId === event.pointerId &&
+      Math.hypot(event.clientX - press.start.x, event.clientY - press.start.y) > 10
+    ) {
+      cancelLongPress();
+    }
+  };
+
+  const finishTouchPointer = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    if (longPress.current?.pointerId === event.pointerId) cancelLongPress();
+    touchPoints.current.delete(event.pointerId);
+    const metrics = touchMetrics();
+    pinchState.current = metrics;
+    if (!touchPoints.current.size) touchGestureConsumed.current = false;
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (!interactive) return;
     // панорамирование ЛКМ/СКМ по фону
     if (e.button === 0 || e.button === 1) {
       e.preventDefault();
       panState.current = { x: e.clientX, y: e.clientY };
-      select(null);
+      if (!e.shiftKey) select(null);
       const move = (ev: PointerEvent) => {
         if (!panState.current) return;
         panBy(ev.clientX - panState.current.x, ev.clientY - panState.current.y);
@@ -150,9 +320,22 @@ export function Canvas() {
       style={{
         cursor: interactive ? "default" : "wait",
         backgroundColor: settings.bgColor,
+        touchAction: "none",
+        overscrollBehavior: "none",
+      }}
+      onPointerDownCapture={onPointerDownCapture}
+      onPointerMoveCapture={onPointerMoveCapture}
+      onPointerUpCapture={finishTouchPointer}
+      onPointerCancelCapture={finishTouchPointer}
+      onClickCapture={(event) => {
+        if (Date.now() >= suppressClickUntil.current) return;
+        suppressClickUntil.current = 0;
+        event.preventDefault();
+        event.stopPropagation();
       }}
       onPointerDown={onPointerDown}
       onWheel={onWheel}
+      onContextMenuCapture={() => cancelLongPress()}
       onContextMenu={onContextMenu}
     >
       {/* В обычном режиме фон покрывает viewport и всегда остаётся видимым. */}
@@ -201,9 +384,16 @@ export function Canvas() {
       {isEmpty && interactive && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center font-bold text-[22px] leading-snug text-[#b3a89f] no-select">
-            Нажмите правую кнопку мыши,
-            <br />
-            чтобы начать...
+            <span className="hidden sm:inline">
+              Нажмите правую кнопку мыши,
+              <br />
+              чтобы начать...
+            </span>
+            <span className="sm:hidden">
+              Зажмите холст,
+              <br />
+              чтобы начать...
+            </span>
           </div>
         </div>
       )}

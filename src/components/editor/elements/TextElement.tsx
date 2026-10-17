@@ -124,7 +124,18 @@ export function TextFormatToolbar({
 
 export function TextView({ text, interactive }: { text: TextElement; interactive: boolean }) {
   const selectedId = useEditor((state) => state.selectedId);
+  const selected = useEditor((state) => state.selectedIds.includes(text.id));
+  const selectedCount = useEditor((state) => state.selectedIds.length);
+  const groupSelected = useEditor((state) =>
+    Boolean(
+      text.groupId &&
+        state.selectedIds.some((selectedElementId) =>
+          state.elements[selectedElementId]?.groupId === text.groupId
+        )
+    )
+  );
   const select = useEditor((state) => state.select);
+  const toggleSelection = useEditor((state) => state.toggleSelection);
   const openMenu = useEditor((state) => state.openMenu);
   const setEditing = useEditor((state) => state.setEditing);
   const editing = useEditor((state) => state.editing);
@@ -148,8 +159,9 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
   } | null>(null);
   const isEditing = editing?.id === text.id && editing.field === "html";
   const interactiveElement = interactive && !exportMode;
-  const selected = selectedId === text.id;
-  const showControls = interactiveElement && selected && !isEditing;
+  const outlined = selected || groupSelected;
+  const showControls =
+    interactiveElement && selectedId === text.id && selectedCount === 1 && !isEditing;
   const beginRotate = useElementRotation(text.id, text.rotation, ref, showControls);
 
   useEffect(() => {
@@ -266,8 +278,9 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
         data-element-id={text.id}
         data-element-rotation={text.rotation}
         data-text-font-size={text.fontSize}
+        data-selected={selected || undefined}
         className={`absolute top-0 left-0 no-select ${
-          selected && interactiveElement && !isEditing
+          outlined && interactiveElement && !isEditing
             ? "outline outline-[1.5px] outline-[#9a7c5e]/50 rounded-[3px]"
             : ""
         }`}
@@ -286,7 +299,11 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
             (activeEditing?.id === text.id && activeEditing.field === "html")
           ) return;
           event.stopPropagation();
-          select(text.id);
+          if (event.shiftKey) {
+            toggleSelection(text.id);
+            return;
+          }
+          if (!useEditor.getState().selectedIds.includes(text.id)) select(text.id);
           onPointerDown(event, dragMove);
         }}
         onDoubleClick={(event) => {
@@ -298,7 +315,7 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
           if (!interactiveElement) return;
           event.preventDefault();
           event.stopPropagation();
-          select(text.id);
+          if (!useEditor.getState().selectedIds.includes(text.id)) select(text.id);
           openMenu({
             type: "text",
             screen: { x: event.clientX, y: event.clientY },

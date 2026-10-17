@@ -84,9 +84,9 @@ export function Toolbar() {
   };
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-40 flex flex-row flex-wrap items-start justify-between gap-2 no-select pointer-events-none p-4 sm:p-5 md:p-6">
-      {/* Заголовок */}
-      <div className="pointer-events-auto min-w-0 flex-1 basis-[240px] pr-[32px]">
+    <div className="absolute top-0 left-0 right-0 z-40 flex flex-col items-stretch justify-between gap-0 no-select pointer-events-none p-4 sm:flex-row sm:flex-wrap sm:items-start sm:gap-2 sm:p-5 md:p-6">
+      {/* Заголовок: на мобильных занимает всю ширину под кнопками */}
+      <div className="order-2 mt-6 w-full min-w-0 flex-none pointer-events-auto sm:order-1 sm:mt-0 sm:w-auto sm:flex-1 sm:basis-[240px] sm:pr-[32px]">
         {isEditingTitle ? (
           <div
             key="title-editor"
@@ -113,7 +113,7 @@ export function Toolbar() {
           <div
             key="title-display"
             ref={titleRef}
-            className="editable-hover font-bold text-[19px] sm:text-[22px] leading-tight text-[var(--c-headings)] border-b-2 border-[#9a7c5e]/60 pb-1 w-fit max-w-full break-words"
+            className="editable-hover w-full max-w-full break-words border-b-2 border-[#9a7c5e]/60 pb-1 font-bold text-[19px] leading-tight text-[var(--c-headings)] sm:w-fit sm:text-[22px]"
             title="Дважды нажмите, чтобы редактировать"
             onDoubleClick={() => {
               const bounds = titleRef.current?.getBoundingClientRect();
@@ -145,7 +145,7 @@ export function Toolbar() {
       {/* Кнопки */}
       <div
         aria-hidden={uiHidden}
-        className={`ml-auto flex max-w-full flex-row flex-wrap items-center justify-end gap-1.5 sm:gap-2 ${
+        className={`order-1 ml-auto flex w-full max-w-full flex-row flex-wrap items-center justify-end gap-1.5 sm:order-2 sm:w-auto sm:gap-2 ${
           uiHidden ? "invisible pointer-events-none" : "pointer-events-auto"
         }`}
       >
