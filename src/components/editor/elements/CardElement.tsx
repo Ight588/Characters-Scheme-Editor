@@ -5,7 +5,11 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { CircleUserRound } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
-import { CardElement, CARD_COMPACT_MAX_WIDTH } from "@/lib/editor/types";
+import {
+  CardElement,
+  CARD_COMPACT_MAX_WIDTH,
+  CARD_EXPANDED_WIDTH,
+} from "@/lib/editor/types";
 import { requestAvatar } from "@/lib/editor/filepicker";
 import { EditableText } from "../EditableText";
 
@@ -205,8 +209,9 @@ export function CardView({ card }: { card: CardElement }) {
       data-element-id={card.id}
       data-card-variant={collapsed ? "compact" : "expanded"}
       data-group-selected={groupSelected || undefined}
-      className={`p-card no-select absolute top-0 left-0 w-max ${outlined ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
+      className={`p-card no-select absolute top-0 left-0 ${collapsed ? "w-max" : ""} ${outlined ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
       style={{
+        width: collapsed ? undefined : CARD_EXPANDED_WIDTH,
         maxWidth: collapsed ? CARD_COMPACT_MAX_WIDTH : undefined,
         transform: `translate(${card.x}px, ${card.y}px)`,
       }}
