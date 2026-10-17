@@ -10,15 +10,26 @@ import { useElementRotation } from "./useElementRotation";
 
 export function ImageView({ image, interactive }: { image: ImageElement; interactive: boolean }) {
   const selectedId = useEditor((s) => s.selectedId);
+  const selected = useEditor((s) => s.selectedIds.includes(image.id));
+  const selectedCount = useEditor((s) => s.selectedIds.length);
+  const groupSelected = useEditor((s) =>
+    Boolean(
+      image.groupId &&
+        s.selectedIds.some((selectedElementId) =>
+          s.elements[selectedElementId]?.groupId === image.groupId
+        )
+    )
+  );
   const select = useEditor((s) => s.select);
+  const toggleSelection = useEditor((s) => s.toggleSelection);
   const openMenu = useEditor((s) => s.openMenu);
   const exportMode = useEditor((s) => s.exportMode);
   const setRect = useEditor((s) => s.setRect);
   const { onPointerDown } = useElementDrag("move");
   const ref = useRef<HTMLDivElement | null>(null);
   const interactiveEl = interactive && !exportMode;
-  const selected = selectedId === image.id;
-  const showControls = interactiveEl && selected;
+  const outlined = selected || groupSelected;
+  const showControls = interactiveEl && selectedId === image.id && selectedCount === 1;
   const beginRotate = useElementRotation(image.id, image.rotation, ref, showControls);
 
   useEffect(() => {
@@ -96,7 +107,8 @@ export function ImageView({ image, interactive }: { image: ImageElement; interac
       ref={ref}
       data-element-id={image.id}
       data-element-rotation={image.rotation}
-      className={`absolute top-0 left-0 no-select ${selected && interactiveEl ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
+      data-selected={selected || undefined}
+      className={`absolute top-0 left-0 no-select ${outlined && interactiveEl ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
       style={{
         width: image.width,
         height: image.height,
@@ -106,14 +118,18 @@ export function ImageView({ image, interactive }: { image: ImageElement; interac
       onPointerDown={(event) => {
         if (!interactiveEl || event.button !== 0) return;
         event.stopPropagation();
-        select(image.id);
+        if (event.shiftKey) {
+          toggleSelection(image.id);
+          return;
+        }
+        if (!useEditor.getState().selectedIds.includes(image.id)) select(image.id);
         onPointerDown(event, dragMove);
       }}
       onContextMenu={(event) => {
         if (!interactiveEl) return;
         event.preventDefault();
         event.stopPropagation();
-        select(image.id);
+        if (!useEditor.getState().selectedIds.includes(image.id)) select(image.id);
         openMenu({
           type: "image",
           screen: { x: event.clientX, y: event.clientY },

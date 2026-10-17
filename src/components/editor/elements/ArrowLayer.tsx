@@ -104,12 +104,21 @@ function ArrowShape({
   to: Point;
   interactive: boolean;
 }) {
-  const selectedId = useEditor((s) => s.selectedId);
+  const selected = useEditor((s) => s.selectedIds.includes(arrow.id));
+  const groupSelected = useEditor((s) =>
+    Boolean(
+      arrow.groupId &&
+        s.selectedIds.some((selectedElementId) =>
+          s.elements[selectedElementId]?.groupId === arrow.groupId
+        )
+    )
+  );
   const select = useEditor((s) => s.select);
+  const toggleSelection = useEditor((s) => s.toggleSelection);
   const openMenu = useEditor((s) => s.openMenu);
   const pushHistory = useEditor((s) => s.pushHistory);
   const { onPointerDown } = useElementDrag("arrow-body");
-  const selected = selectedId === arrow.id;
+  const outlined = selected || groupSelected;
 
   const width = ARROW_THICKNESS_PX[arrow.thickness];
   const dashed = arrow.lineStyle === "dashed";
@@ -127,7 +136,11 @@ function ArrowShape({
   const beginBodyDrag = (e: React.PointerEvent) => {
     if (!interactive || e.button !== 0) return;
     e.stopPropagation();
-    select(arrow.id);
+    if (e.shiftKey) {
+      toggleSelection(arrow.id);
+      return;
+    }
+    if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
     if (arrow.fromCard || arrow.toCard) return; // привязанную двигаем за концы
     onPointerDown(e, (dxW, dyW) => {
       const cur = useEditor.getState().elements[arrow.id] as ArrowElement | undefined;
@@ -150,7 +163,7 @@ function ArrowShape({
   const beginEndDrag = (e: React.PointerEvent, end: "from" | "to") => {
     if (!interactive || e.button !== 0) return;
     e.stopPropagation();
-    select(arrow.id);
+    if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
     dragState.current = { moved: false, pushed: false };
 
     const move = (ev: PointerEvent) => {
@@ -201,7 +214,11 @@ function ArrowShape({
   };
 
   return (
-    <g className={`arrow-group ${selected ? "arrow-selected" : ""}`} data-arrow-id={arrow.id}>
+    <g
+      className={`arrow-group ${outlined ? "arrow-selected" : ""}`}
+      data-arrow-id={arrow.id}
+      data-selected={selected || undefined}
+    >
       <path
         d={hitPath}
         stroke="transparent"
@@ -213,7 +230,7 @@ function ArrowShape({
           if (!interactive) return;
           e.preventDefault();
           e.stopPropagation();
-          select(arrow.id);
+          if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
           openMenu({
             type: "arrow",
             screen: { x: e.clientX, y: e.clientY },
@@ -308,12 +325,19 @@ function ArrowDescription({
         lineHeight: "12px",
         pointerEvents: interactive ? "auto" : "none",
       }}
-      onPointerDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (interactive && event.shiftKey) {
+          useEditor.getState().toggleSelection(arrow.id);
+        }
+      }}
       onContextMenu={(event) => {
         if (!interactive) return;
         event.preventDefault();
         event.stopPropagation();
-        useEditor.getState().select(arrow.id);
+        if (!useEditor.getState().selectedIds.includes(arrow.id)) {
+          useEditor.getState().select(arrow.id);
+        }
         useEditor.getState().openMenu({
           type: "arrow",
           screen: { x: event.clientX, y: event.clientY },

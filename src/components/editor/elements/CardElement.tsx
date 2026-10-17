@@ -30,7 +30,11 @@ export function useElementDrag(kind: "move" | "arrow-body" | "arrow-end") {
     (e: React.PointerEvent, onMove: (dxWorld: number, dyWorld: number, e: PointerEvent) => void) => {
       if (e.button !== 0) return;
       e.stopPropagation();
-      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      } catch {
+        // Некоторые touch-браузеры уже отдают capture другому жесту (например, pinch).
+      }
       start.current = {
         originX: e.clientX,
         originY: e.clientY,
@@ -81,15 +85,18 @@ export function CardView({ card }: { card: CardElement }) {
   const updateElement = useEditor((s) => s.updateElement);
   const setRect = useEditor((s) => s.setRect);
   const exportMode = useEditor((s) => s.exportMode);
-  const selectedId = useEditor((s) => s.selectedId);
-  const selectedGroupId = useEditor((s) => {
-    const selected = s.selectedId ? s.elements[s.selectedId] : undefined;
-    return selected?.kind === "card" ? selected.groupId : undefined;
-  });
+  const selected = useEditor((s) => s.selectedIds.includes(card.id));
+  const groupSelected = useEditor((s) =>
+    Boolean(
+      card.groupId &&
+        s.selectedIds.some((selectedId) => s.elements[selectedId]?.groupId === card.groupId)
+    )
+  );
   const select = useEditor((s) => s.select);
+  const toggleSelection = useEditor((s) => s.toggleSelection);
   const openMenu = useEditor((s) => s.openMenu);
   const setEditing = useEditor((s) => s.setEditing);
-  const { onPointerDown } = useElementDrag("move");
+  const { onPointerDown, wasDrag } = useElementDrag("move");
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   const collapsed = exportMode
@@ -115,10 +122,15 @@ export function CardView({ card }: { card: CardElement }) {
     [card.id]
   );
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerDown = (event: React.PointerEvent) => {
     if (useEditor.getState().editing) return; // не таскаем во время редактирования текста
-    select(card.id);
-    onPointerDown(e, dragMove);
+    if (event.shiftKey) {
+      event.stopPropagation();
+      toggleSelection(card.id);
+      return;
+    }
+    if (!useEditor.getState().selectedIds.includes(card.id)) select(card.id);
+    onPointerDown(event, dragMove);
   };
 
   const statusStyle: React.CSSProperties | undefined = card.status
@@ -136,10 +148,12 @@ export function CardView({ card }: { card: CardElement }) {
       className="shrink-0 rounded-full overflow-hidden bg-[#d9c9be] flex items-end justify-center cursor-pointer group/av relative"
       style={{ width: collapsed ? 64 : 72, height: collapsed ? 64 : 72 }}
       title="Нажмите, чтобы загрузить аватар"
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={(event) => {
+        if (event.pointerType !== "touch" && !event.shiftKey) event.stopPropagation();
+      }}
       onClick={(e) => {
         e.stopPropagation();
-        if (exportMode) return;
+        if (e.shiftKey || exportMode) return;
         requestAvatar(card.id);
       }}
     >
@@ -164,14 +178,16 @@ export function CardView({ card }: { card: CardElement }) {
     />
   );
 
-  const groupSelected = Boolean(card.groupId && card.groupId === selectedGroupId);
-  const outlined = !exportMode && (selectedId === card.id || groupSelected);
+  const outlined = !exportMode && (selected || groupSelected);
 
   const statusChip = card.status && (
     <span
+      data-status-card-id={card.id}
       className="status-chip"
       style={statusStyle}
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={(event) => {
+        if (event.pointerType !== "touch" && !event.shiftKey) event.stopPropagation();
+      }}
       onContextMenu={(e) => {
         if (exportMode) return;
         e.preventDefault();
@@ -208,6 +224,7 @@ export function CardView({ card }: { card: CardElement }) {
       ref={boxRef}
       data-element-id={card.id}
       data-card-variant={collapsed ? "compact" : "expanded"}
+      data-selected={selected || undefined}
       data-group-selected={groupSelected || undefined}
       className={`p-card no-select absolute top-0 left-0 ${collapsed ? "w-max" : ""} ${outlined ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
       style={{
@@ -216,11 +233,16 @@ export function CardView({ card }: { card: CardElement }) {
         transform: `translate(${card.x}px, ${card.y}px)`,
       }}
       onPointerDown={handlePointerDown}
+      onClickCapture={(event) => {
+        if (!wasDrag()) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       onContextMenu={(e) => {
         if (exportMode) return;
         e.preventDefault();
         e.stopPropagation();
-        select(card.id);
+        if (!useEditor.getState().selectedIds.includes(card.id)) select(card.id);
         openMenu({
           type: "card",
           screen: { x: e.clientX, y: e.clientY },

@@ -51,6 +51,11 @@ export type PanelState =
 
 export type ExportMode = { mode: "full" | "mini" } | null;
 
+type ClipboardPayload = {
+  elements: CanvasElement[];
+  anchor: Point;
+};
+
 export type FilePickKind = "image" | "avatar" | "bg" | "open";
 
 type EditorState = {
@@ -67,12 +72,13 @@ type EditorState = {
   /* ---- runtime ---- */
   rects: Record<string, { w: number; h: number }>;
   selectedId: string | null;
+  selectedIds: string[];
   editing: { id: string; field: string } | null;
   menu: MenuState | null;
   panel: PanelState | null;
   shareOpen: boolean;
   clearAllConfirmOpen: boolean;
-  clipboard: CardElement | null;
+  clipboard: ClipboardPayload | null;
   exportMode: ExportMode;
   exportOffset: Point;
   uiHidden: boolean;
@@ -93,13 +99,17 @@ type EditorState = {
   addArrowAt: (world: Point) => string;
   addTextAt: (world: Point) => string;
   addImageAt: (world: Point, src: string, w: number, h: number) => void;
-  pasteAt: (world: Point) => void;
+  pasteAt: (world?: Point) => void;
 
   updateElement: (id: string, patch: Partial<CanvasElement>) => void;
   moveElement: (id: string, x: number, y: number) => void;
   removeElement: (id: string) => void;
+  removeSelection: () => void;
   duplicateElement: (id: string) => void;
   copyCard: (id: string) => void;
+  copySelection: () => void;
+  groupSelection: () => void;
+  ungroupSelection: () => void;
 
   linkCards: (fromId: string, toId: string) => void;
   unlinkCards: (aId: string, bId: string) => void;
@@ -131,6 +141,8 @@ type EditorState = {
 
   setRect: (id: string, w: number, h: number) => void;
   select: (id: string | null) => void;
+  toggleSelection: (id: string) => void;
+  selectAll: () => void;
   setEditing: (editing: { id: string; field: string } | null) => void;
   openMenu: (menu: MenuState | null) => void;
   openPanel: (panel: PanelState | null) => void;
@@ -215,6 +227,37 @@ function normalizeElements(
   return { elements, order };
 }
 
+function cloneCanvasElement(element: CanvasElement): CanvasElement {
+  if (element.kind === "card") {
+    return {
+      ...element,
+      status: element.status ? { ...element.status } : null,
+    };
+  }
+  if (element.kind === "arrow") {
+    return {
+      ...element,
+      fromPoint: { ...element.fromPoint },
+      toPoint: { ...element.toPoint },
+    };
+  }
+  return { ...element };
+}
+
+function clipboardAnchor(elements: CanvasElement[]): Point {
+  if (!elements.length) return { x: 0, y: 0 };
+  return {
+    x: Math.min(...elements.map((element) => element.x)),
+    y: Math.min(...elements.map((element) => element.y)),
+  };
+}
+
+function activeSelection(state: EditorState): string[] {
+  const selected = state.selectedIds.filter((id) => Boolean(state.elements[id]));
+  if (selected.length) return [...new Set(selected)];
+  return state.selectedId && state.elements[state.selectedId] ? [state.selectedId] : [];
+}
+
 export const useEditor = create<EditorState>((set, get) => ({
   hydrated: false,
   title: "",
@@ -227,6 +270,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   rects: {},
   selectedId: null,
+  selectedIds: [],
   editing: null,
   menu: null,
   panel: null,
@@ -278,6 +322,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       settings: { ...snap.settings },
       savedStatuses: snap.savedStatuses.map((x) => ({ ...x })),
       savedArrowStyles: snap.savedArrowStyles.map((x) => ({ ...x })),
+      selectedId: null,
+      selectedIds: [],
+      editing: null,
     });
   },
 
@@ -292,6 +339,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...prev,
       elements: { ...prev.elements },
       order: [...prev.order],
+      selectedId: null,
+      selectedIds: [],
+      editing: null,
       menu: null,
       panel: null,
     });
@@ -308,6 +358,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...next,
       elements: { ...next.elements },
       order: [...next.order],
+      selectedId: null,
+      selectedIds: [],
+      editing: null,
       menu: null,
       panel: null,
     });
@@ -328,6 +381,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       elements: { ...s.elements, [card.id]: card },
       order: [...s.order, card.id],
       selectedId: card.id,
+      selectedIds: [card.id],
       menu: null,
     }));
     return card.id;
@@ -341,6 +395,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       elements: { ...s.elements, [arrow.id]: arrow },
       order: [...s.order, arrow.id],
       selectedId: arrow.id,
+      selectedIds: [arrow.id],
       menu: null,
     }));
     return arrow.id;
@@ -354,6 +409,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       elements: { ...s.elements, [text.id]: text },
       order: [...s.order, text.id],
       selectedId: text.id,
+      selectedIds: [text.id],
       editing: { id: text.id, field: "html" },
       menu: null,
     }));
@@ -377,27 +433,64 @@ export const useEditor = create<EditorState>((set, get) => ({
       elements: { ...s.elements, [img.id]: img },
       order: [...s.order, img.id],
       selectedId: img.id,
+      selectedIds: [img.id],
     }));
   },
 
   pasteAt: (world) => {
-    const s = get();
-    if (!s.clipboard) return;
-    s.pushHistory();
-    const point = normalizePoint(world);
-    const copy: CardElement = {
-      ...s.clipboard,
-      id: uid("card"),
-      x: point.x,
-      y: point.y,
-      groupId: undefined,
-    };
-    set((st) => ({
-      elements: { ...st.elements, [copy.id]: copy },
-      order: [...st.order, copy.id],
-      selectedId: copy.id,
-      menu: null,
-    }));
+    const state = get();
+    const source = state.clipboard?.elements ?? [];
+    if (!source.length || !state.clipboard) return;
+    state.pushHistory();
+
+    const target = world
+      ? normalizePoint(world)
+      : { x: state.clipboard.anchor.x + 24, y: state.clipboard.anchor.y + 24 };
+    const dx = target.x - state.clipboard.anchor.x;
+    const dy = target.y - state.clipboard.anchor.y;
+    const idMap = new Map(source.map((element) => [element.id, uid(element.kind)]));
+    const groupCounts = new Map<string, number>();
+    for (const element of source) {
+      if (element.groupId) {
+        groupCounts.set(element.groupId, (groupCounts.get(element.groupId) ?? 0) + 1);
+      }
+    }
+    const groupMap = new Map<string, string>();
+    const copies = source.map((sourceElement) => {
+      const copy = cloneCanvasElement(sourceElement);
+      copy.id = idMap.get(sourceElement.id)!;
+      copy.x += dx;
+      copy.y += dy;
+      if (sourceElement.groupId && (groupCounts.get(sourceElement.groupId) ?? 0) > 1) {
+        if (!groupMap.has(sourceElement.groupId)) groupMap.set(sourceElement.groupId, uid("grp"));
+        copy.groupId = groupMap.get(sourceElement.groupId);
+      } else {
+        copy.groupId = undefined;
+      }
+      if (copy.kind === "arrow") {
+        if (copy.fromCard && idMap.has(copy.fromCard)) copy.fromCard = idMap.get(copy.fromCard);
+        if (copy.toCard && idMap.has(copy.toCard)) copy.toCard = idMap.get(copy.toCard);
+      }
+      return copy;
+    });
+
+    set((current) => {
+      const elements = { ...current.elements };
+      for (const copy of copies) elements[copy.id] = copy;
+      const selectedIds = copies.map((copy) => copy.id);
+      return {
+        elements,
+        order: [...current.order, ...selectedIds],
+        selectedId: selectedIds[selectedIds.length - 1] ?? null,
+        selectedIds,
+        editing: null,
+        menu: null,
+        clipboard: {
+          elements: copies.map(cloneCanvasElement),
+          anchor: clipboardAnchor(copies),
+        },
+      };
+    });
   },
 
   updateElement: (id, patch) => {
@@ -411,20 +504,45 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   moveElement: (id, x, y) => {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    set((s) => {
-      const el = s.elements[id];
-      if (!el) return s;
-      const groupId = el.groupId;
-      const elements = { ...s.elements };
-      elements[id] = { ...el, x, y } as CanvasElement;
-      if (groupId) {
-        for (const other of Object.values(elements)) {
-          if (other.kind === "card" && other.groupId === groupId && other.id !== id) {
-            const dx = x - el.x;
-            const dy = y - el.y;
-            elements[other.id] = { ...other, x: other.x + dx, y: other.y + dy } as CanvasElement;
+    set((state) => {
+      const element = state.elements[id];
+      if (!element) return state;
+      const dx = x - element.x;
+      const dy = y - element.y;
+      if (dx === 0 && dy === 0) return state;
+
+      const movingIds = new Set<string>();
+      const selection = activeSelection(state);
+      if (selection.length > 1 && selection.includes(id)) {
+        for (const selectedId of selection) movingIds.add(selectedId);
+      } else {
+        movingIds.add(id);
+      }
+
+      // Любой участник группы перемещает всю группу; Set не даёт сдвинуть
+      // элемент дважды, если группа и множественное выделение пересекаются.
+      const selectedGroupIds = new Set(
+        [...movingIds]
+          .map((movingId) => state.elements[movingId]?.groupId)
+          .filter((groupId): groupId is string => Boolean(groupId))
+      );
+      if (selectedGroupIds.size) {
+        for (const candidate of Object.values(state.elements)) {
+          if (candidate.groupId && selectedGroupIds.has(candidate.groupId)) {
+            movingIds.add(candidate.id);
           }
         }
+      }
+
+      const elements = { ...state.elements };
+      for (const movingId of movingIds) {
+        const current = elements[movingId];
+        if (!current) continue;
+        elements[movingId] = {
+          ...current,
+          x: current.x + dx,
+          y: current.y + dy,
+        } as CanvasElement;
       }
       return { elements };
     });
@@ -453,15 +571,73 @@ export const useEditor = create<EditorState>((set, get) => ({
     const rects = { ...s.rects };
     for (const removedId of removedIds) delete rects[removedId];
 
-    set((st) => ({
-      elements,
-      order: st.order.filter((elementId) => !removedIds.has(elementId) && Boolean(elements[elementId])),
-      rects,
-      selectedId: st.selectedId && removedIds.has(st.selectedId) ? null : st.selectedId,
-      editing: st.editing && removedIds.has(st.editing.id) ? null : st.editing,
-      menu: null,
-      panel: st.panel?.type === "arrow-style" && removedIds.has(st.panel.id) ? null : st.panel,
-    }));
+    set((current) => {
+      const selectedIds = current.selectedIds.filter(
+        (selectedId) => !removedIds.has(selectedId)
+      );
+      return {
+        elements,
+        order: current.order.filter(
+          (elementId) => !removedIds.has(elementId) && Boolean(elements[elementId])
+        ),
+        rects,
+        selectedIds,
+        selectedId:
+          current.selectedId && removedIds.has(current.selectedId)
+            ? selectedIds[selectedIds.length - 1] ?? null
+            : current.selectedId,
+        editing:
+          current.editing && removedIds.has(current.editing.id) ? null : current.editing,
+        menu: null,
+        panel:
+          current.panel?.type === "arrow-style" && removedIds.has(current.panel.id)
+            ? null
+            : current.panel,
+      };
+    });
+  },
+
+  removeSelection: () => {
+    const state = get();
+    const selectedIds = activeSelection(state);
+    if (!selectedIds.length) return;
+    state.pushHistory();
+
+    const removedIds = new Set(selectedIds);
+    for (const selectedId of selectedIds) {
+      if (state.elements[selectedId]?.kind !== "card") continue;
+      for (const element of Object.values(state.elements)) {
+        if (
+          element.kind === "arrow" &&
+          (element.fromCard === selectedId || element.toCard === selectedId)
+        ) {
+          removedIds.add(element.id);
+        }
+      }
+    }
+
+    set((current) => {
+      const elements = { ...current.elements };
+      const rects = { ...current.rects };
+      for (const removedId of removedIds) {
+        delete elements[removedId];
+        delete rects[removedId];
+      }
+      return {
+        elements,
+        order: current.order.filter((id) => !removedIds.has(id) && Boolean(elements[id])),
+        rects,
+        selectedId: null,
+        selectedIds: [],
+        editing:
+          current.editing && removedIds.has(current.editing.id) ? null : current.editing,
+        menu: null,
+        panel:
+          current.panel?.type === "arrow-style" && removedIds.has(current.panel.id)
+            ? null
+            : current.panel,
+      };
+    });
   },
 
   duplicateElement: (id) => {
@@ -486,13 +662,62 @@ export const useEditor = create<EditorState>((set, get) => ({
       elements: { ...st.elements, [copy.id]: copy },
       order: [...st.order, copy.id],
       selectedId: copy.id,
+      selectedIds: [copy.id],
       menu: null,
     }));
   },
 
   copyCard: (id) => {
-    const el = get().elements[id];
-    if (el && el.kind === "card") set({ clipboard: { ...el } });
+    const element = get().elements[id];
+    if (!element || element.kind !== "card") return;
+    const copy = cloneCanvasElement(element);
+    set({ clipboard: { elements: [copy], anchor: { x: copy.x, y: copy.y } } });
+  },
+
+  copySelection: () => {
+    const state = get();
+    const elements = activeSelection(state)
+      .map((id) => state.elements[id])
+      .filter((element): element is CanvasElement => Boolean(element))
+      .map(cloneCanvasElement);
+    if (!elements.length) return;
+    set({ clipboard: { elements, anchor: clipboardAnchor(elements) } });
+  },
+
+  groupSelection: () => {
+    const state = get();
+    const selectedIds = activeSelection(state);
+    if (selectedIds.length < 2) return;
+    state.pushHistory();
+    const groupId = uid("grp");
+    set((current) => {
+      const elements = { ...current.elements };
+      for (const selectedId of selectedIds) {
+        const element = elements[selectedId];
+        if (element) elements[selectedId] = { ...element, groupId } as CanvasElement;
+      }
+      return { elements, menu: null, panel: null };
+    });
+  },
+
+  ungroupSelection: () => {
+    const state = get();
+    const groupIds = new Set(
+      activeSelection(state)
+        .map((id) => state.elements[id]?.groupId)
+        .filter((groupId): groupId is string => Boolean(groupId))
+    );
+    if (!groupIds.size) return;
+    state.pushHistory();
+    set((current) => {
+      const elements = { ...current.elements };
+      for (const element of Object.values(elements)) {
+        if (element.groupId && groupIds.has(element.groupId)) {
+          elements[element.id] = { ...element, groupId: undefined } as CanvasElement;
+        }
+      }
+      return { elements, menu: null, panel: null };
+    });
   },
 
   linkCards: (fromId, toId) => {
@@ -524,6 +749,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       elements: { ...st.elements, [arrow.id]: arrow },
       order: [...st.order, arrow.id],
       selectedId: arrow.id,
+      selectedIds: [arrow.id],
       menu: null,
     }));
   },
@@ -712,6 +938,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         menu: null,
         panel: null,
         selectedId: null,
+        selectedIds: [],
         editing: null,
         rects: {},
         clipboard: null,
@@ -725,6 +952,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       order: [],
       rects: {},
       selectedId: null,
+      selectedIds: [],
       editing: null,
       menu: null,
       panel: null,
@@ -746,6 +974,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       view: { ...DEFAULT_VIEW },
       rects: {},
       selectedId: null,
+      selectedIds: [],
       editing: null,
       menu: null,
       panel: null,
@@ -773,6 +1002,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       savedArrowStyles: data.savedArrowStyles ?? [],
       view: normalizeView(data.view),
       selectedId: null,
+      selectedIds: [],
       editing: null,
       menu: null,
       panel: null,
@@ -819,7 +1049,40 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  select: (id) => set({ selectedId: id }),
+  select: (id) =>
+    set({
+      selectedId: id,
+      selectedIds: id ? [id] : [],
+    }),
+
+  toggleSelection: (id) =>
+    set((state) => {
+      if (!state.elements[id]) return state;
+      const alreadySelected = state.selectedIds.includes(id);
+      const selectedIds = alreadySelected
+        ? state.selectedIds.filter((selectedId) => selectedId !== id)
+        : [...state.selectedIds, id];
+      return {
+        selectedIds,
+        selectedId: alreadySelected
+          ? selectedIds[selectedIds.length - 1] ?? null
+          : id,
+        menu: null,
+        panel: null,
+      };
+    }),
+
+  selectAll: () =>
+    set((state) => {
+      const selectedIds = [...new Set(state.order.filter((id) => Boolean(state.elements[id])))];
+      return {
+        selectedIds,
+        selectedId: selectedIds[selectedIds.length - 1] ?? null,
+        editing: null,
+        menu: null,
+        panel: null,
+      };
+    }),
 
   setEditing: (editing) => set({ editing }),
 

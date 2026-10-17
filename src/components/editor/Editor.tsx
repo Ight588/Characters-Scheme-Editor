@@ -178,16 +178,35 @@ export default function Editor() {
           target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
           target.tagName === "SELECT");
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+      const modifier = e.ctrlKey || e.metaKey;
+      const shortcut = !typing && modifier;
+
+      if (shortcut && !e.shiftKey && e.code === "KeyZ") {
         e.preventDefault();
         state.undo();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+      } else if (
+        shortcut &&
+        (e.code === "KeyY" || (e.shiftKey && e.code === "KeyZ"))
+      ) {
         e.preventDefault();
         state.redo();
+      } else if (shortcut && !e.shiftKey && e.code === "KeyC") {
+        e.preventDefault();
+        state.copySelection();
+      } else if (shortcut && !e.shiftKey && e.code === "KeyV") {
+        e.preventDefault();
+        state.pasteAt();
+      } else if (shortcut && !e.shiftKey && e.code === "KeyA") {
+        e.preventDefault();
+        state.selectAll();
+      } else if (shortcut && e.code === "KeyG") {
+        e.preventDefault();
+        if (e.shiftKey) state.ungroupSelection();
+        else state.groupSelection();
       } else if (!typing && (e.key === "Delete" || e.key === "Backspace")) {
-        if (state.selectedId) {
+        if (state.selectedIds.length || state.selectedId) {
           e.preventDefault();
-          state.removeElement(state.selectedId);
+          state.removeSelection();
         }
       } else if (e.key === "Escape") {
         if (state.clearAllConfirmOpen) {

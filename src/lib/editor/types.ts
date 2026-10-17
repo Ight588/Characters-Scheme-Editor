@@ -7,7 +7,7 @@ export type ElementBase = {
   kind: "card" | "arrow" | "image" | "text";
   x: number;
   y: number;
-  /** группировка карточек: перетаскиваются вместе */
+  /** элементы одной группы выделяются и перетаскиваются вместе */
   groupId?: string;
 };
 

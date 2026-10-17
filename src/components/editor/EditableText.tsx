@@ -113,9 +113,14 @@ export function EditableText({
       className={`editable-hover ${className ?? ""}`}
       style={style}
       title={title ?? "Нажмите, чтобы редактировать"}
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={(event) => {
+        // На touch короткий tap всё ещё откроет редактор через onClick, а
+        // движение должно всплыть к карточке и начать её перетаскивание.
+        if (event.pointerType !== "touch" && !event.shiftKey) event.stopPropagation();
+      }}
       onClick={(e) => {
         e.stopPropagation();
+        if (e.shiftKey) return;
         setEditing({ id, field });
       }}
     >
