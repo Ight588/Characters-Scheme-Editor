@@ -5,6 +5,7 @@ import {
   CanvasElement,
   CanvasSettings,
   CURRENT_FILE_VERSION,
+  DEFAULT_SETTINGS,
   PersistedState,
   SavedArrowStyle,
   SavedStatusItem,
@@ -101,7 +102,7 @@ export function parseWorkingFile(text: string): PersistedState {
     settings:
       data.settings && typeof data.settings === "object"
         ? (data.settings as CanvasSettings)
-        : { bgColor: "#f2eeeb", bgFit: "tile", bgOpacity: 100 },
+        : { ...DEFAULT_SETTINGS },
     savedStatuses: Array.isArray(data.savedStatuses) ? data.savedStatuses : [],
     savedArrowStyles: Array.isArray(data.savedArrowStyles) ? data.savedArrowStyles : [],
     view:

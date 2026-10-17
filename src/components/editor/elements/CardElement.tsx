@@ -11,6 +11,7 @@ import {
   DEFAULT_STATUS_COLOR,
 } from "@/lib/editor/types";
 import { requestAvatar } from "@/lib/editor/filepicker";
+import { DOUBLE_TAP_DELAY_MS } from "@/lib/editor/interactions";
 import { EditableText } from "../EditableText";
 
 export function useElementDrag(kind: "move" | "arrow-body" | "arrow-end") {
@@ -100,6 +101,8 @@ export function CardView({ card }: { card: CardElement }) {
   const openMenu = useEditor((state) => state.openMenu);
   const { onPointerDown, wasDrag } = useElementDrag("move");
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const avatarTouch = useRef(false);
+  const avatarTapTimer = useRef<number | null>(null);
 
   const collapsed = exportMode ? exportMode.mode === "mini" : card.collapsed;
   const cardEditing = editing?.id === card.id;
@@ -114,6 +117,13 @@ export function CardView({ card }: { card: CardElement }) {
     setRect(card.id, element.offsetWidth, element.offsetHeight);
     return () => observer.disconnect();
   }, [card.id, collapsed, setRect]);
+
+  useEffect(
+    () => () => {
+      if (avatarTapTimer.current) window.clearTimeout(avatarTapTimer.current);
+    },
+    []
+  );
 
   const dragMove = useMemo(
     () => (dxWorld: number, dyWorld: number) => {
@@ -138,15 +148,25 @@ export function CardView({ card }: { card: CardElement }) {
 
   const avatar = (
     <div
-      className="card-avatar group/av relative flex shrink-0 cursor-pointer items-end justify-center overflow-hidden rounded-full"
+      className="card-avatar group/av relative flex shrink-0 cursor-pointer items-end justify-center overflow-hidden"
       title="Нажмите, чтобы загрузить аватар"
       onPointerDown={(event) => {
+        avatarTouch.current = event.pointerType === "touch";
         if (event.pointerType !== "touch" && !event.shiftKey) event.stopPropagation();
       }}
       onClick={(event) => {
         event.stopPropagation();
         if (event.shiftKey || exportMode) return;
-        requestAvatar(card.id);
+        if (!avatarTouch.current) {
+          requestAvatar(card.id);
+          return;
+        }
+        avatarTouch.current = false;
+        if (avatarTapTimer.current) window.clearTimeout(avatarTapTimer.current);
+        avatarTapTimer.current = window.setTimeout(() => {
+          avatarTapTimer.current = null;
+          if (!useEditor.getState().menu) requestAvatar(card.id);
+        }, DOUBLE_TAP_DELAY_MS);
       }}
     >
       {card.avatar && (
@@ -190,13 +210,14 @@ export function CardView({ card }: { card: CardElement }) {
   const statusChip = card.status ? (
     <div
       data-status-card-id={card.id}
-      className={`status-chip ${collapsed ? "status-chip--compact" : "status-chip--expanded"}`}
-      style={{
-        background:
-          card.status.color === DEFAULT_STATUS_COLOR
-            ? "rgba(242, 246, 118, 0.3)"
-            : card.status.color,
-      }}
+      className={`status-chip ${
+        card.status.color === DEFAULT_STATUS_COLOR ? "status-chip--default" : ""
+      } ${collapsed ? "status-chip--compact" : "status-chip--expanded"}`}
+      style={
+        card.status.color === DEFAULT_STATUS_COLOR
+          ? undefined
+          : { background: card.status.color }
+      }
       onPointerDown={(event) => {
         if (event.pointerType !== "touch" && !event.shiftKey) event.stopPropagation();
       }}
@@ -250,7 +271,7 @@ export function CardView({ card }: { card: CardElement }) {
       data-selected={selected || undefined}
       data-group-selected={groupSelected || undefined}
       className={`p-card ${collapsed ? "p-card--compact" : "p-card--expanded"} no-select absolute left-0 top-0 ${
-        outlined ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""
+        outlined ? "element-selection-outline" : ""
       }`}
       style={{
         width: collapsed ? CARD_COMPACT_MAX_WIDTH : CARD_EXPANDED_WIDTH,

@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { useEditor } from "@/lib/editor/store";
+import { designPixels } from "@/lib/editor/design";
 import { ImageElement } from "@/lib/editor/types";
 import { useElementDrag } from "./CardElement";
 import { useElementRotation } from "./useElementRotation";
@@ -82,7 +83,8 @@ export function ImageView({ image, interactive }: { image: ImageElement; interac
       const localDy = screenDx * Math.sin(angle) + screenDy * Math.cos(angle);
       const diagonal = Math.hypot(state.w, state.h);
       const alongDiagonal = (localDx * state.w + localDy * state.h) / diagonal;
-      const minScale = Math.max(40 / state.w, 40 / state.h);
+      const minimumSize = designPixels("--p-20") * 2;
+      const minScale = Math.max(minimumSize / state.w, minimumSize / state.h);
       const scale = Math.max(minScale, 1 + alongDiagonal / diagonal);
 
       useEditor.getState().updateElement(image.id, {
@@ -108,7 +110,9 @@ export function ImageView({ image, interactive }: { image: ImageElement; interac
       data-element-id={image.id}
       data-element-rotation={image.rotation}
       data-selected={selected || undefined}
-      className={`absolute top-0 left-0 no-select ${outlined && interactiveEl ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
+      className={`absolute top-0 left-0 no-select ${
+        outlined && interactiveEl ? "element-selection-outline" : ""
+      }`}
       style={{
         width: image.width,
         height: image.height,
@@ -141,23 +145,23 @@ export function ImageView({ image, interactive }: { image: ImageElement; interac
       <img
         src={image.src}
         alt="Изображение на холсте"
-        className="w-full h-full object-cover rounded-[6px] shadow-[0_2px_10px_rgba(23,5,0,0.12)]"
+        className="canvas-image"
         draggable={false}
       />
       {showControls && (
         <>
           <div
             data-transform-handle="rotate"
-            className="absolute left-1/2 -top-8 flex h-8 w-5 -translate-x-1/2 cursor-grab flex-col items-center active:cursor-grabbing"
+            className="transform-rotate"
             title="Повернуть"
             onPointerDown={beginRotate}
           >
-            <span className="h-4 w-px bg-[#9a7c5e]" />
-            <span className="h-4 w-4 rounded-full border-2 border-[#9a7c5e] bg-[var(--c-menus-bg)]" />
+            <span className="transform-stem" />
+            <span className="transform-knob" />
           </div>
           <div
             data-transform-handle="resize"
-            className="absolute -right-1.5 -bottom-1.5 w-4 h-4 rounded-full bg-[var(--c-menus-bg)] border-2 border-[#9a7c5e] cursor-nwse-resize"
+            className="transform-resize"
             title="Изменить размер"
             onPointerDown={beginResize}
           />

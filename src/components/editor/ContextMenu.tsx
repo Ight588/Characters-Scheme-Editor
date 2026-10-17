@@ -26,6 +26,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useEditor, MenuState } from "@/lib/editor/store";
+import { designPixels } from "@/lib/editor/design";
 import { requestOpenFile } from "@/lib/editor/filepicker";
 import { exportWorkingFile } from "@/lib/editor/exporters";
 
@@ -54,25 +55,25 @@ export type MenuItem = {
 /* ---------------------- Иконки пунктов ---------------------- */
 
 export const MenuIcons = {
-  link: <Link2 size={15} strokeWidth={1.8} />,
-  group: <Group size={15} strokeWidth={1.8} />,
-  copy: <Copy size={15} strokeWidth={1.8} />,
-  duplicate: <CopyPlus size={15} strokeWidth={1.8} />,
-  collapse: <ChevronsDownUp size={15} strokeWidth={1.8} />,
-  expand: <ChevronsUpDown size={15} strokeWidth={1.8} />,
-  unlink: <Unlink2 size={15} strokeWidth={1.8} />,
-  delete: <Trash2 size={15} strokeWidth={1.8} />,
-  image: <ImagePlus size={15} strokeWidth={1.8} />,
-  arrow: <ArrowRight size={15} strokeWidth={1.8} />,
-  text: <Type size={15} strokeWidth={1.8} />,
-  paint: <PaintBucket size={15} strokeWidth={1.8} />,
-  save: <Save size={15} strokeWidth={1.8} />,
-  open: <FolderOpen size={15} strokeWidth={1.8} />,
-  users: <Users size={15} strokeWidth={1.8} />,
-  palette: <Palette size={15} strokeWidth={1.8} />,
-  share: <FileDown size={15} strokeWidth={1.8} />,
-  clear: <Eraser size={15} strokeWidth={1.8} />,
-  plus: <Plus size={15} strokeWidth={1.8} />,
+  link: <Link2 className="menu-icon" />,
+  group: <Group className="menu-icon" />,
+  copy: <Copy className="menu-icon" />,
+  duplicate: <CopyPlus className="menu-icon" />,
+  collapse: <ChevronsDownUp className="menu-icon" />,
+  expand: <ChevronsUpDown className="menu-icon" />,
+  unlink: <Unlink2 className="menu-icon" />,
+  delete: <Trash2 className="menu-icon" />,
+  image: <ImagePlus className="menu-icon" />,
+  arrow: <ArrowRight className="menu-icon" />,
+  text: <Type className="menu-icon" />,
+  paint: <PaintBucket className="menu-icon" />,
+  save: <Save className="menu-icon" />,
+  open: <FolderOpen className="menu-icon" />,
+  users: <Users className="menu-icon" />,
+  palette: <Palette className="menu-icon" />,
+  share: <FileDown className="menu-icon" />,
+  clear: <Eraser className="menu-icon" />,
+  plus: <Plus className="menu-icon" />,
 };
 
 /* ---------------------- Контейнер меню ---------------------- */
@@ -97,7 +98,7 @@ function useOutsideClose(onClose: () => void) {
 }
 
 function clampToViewport(x: number, y: number, w: number, h: number): Point2 {
-  const pad = 8;
+  const pad = designPixels("--p-8");
   return {
     x: Math.min(Math.max(x, pad), window.innerWidth - w - pad),
     y: Math.min(Math.max(y, pad), window.innerHeight - h - pad),
@@ -111,11 +112,9 @@ type Point2 = { x: number; y: number };
 export function ContextMenu({
   state,
   items,
-  width = 230,
 }: {
   state: MenuState;
   items: MenuItem[];
-  width?: number;
 }) {
   const openMenu = useEditor((s) => s.openMenu);
   const ref = useOutsideClose(() => openMenu(null));
@@ -143,8 +142,8 @@ export function ContextMenu({
   return createPortal(
     <div
       ref={ref}
-      className="editor-menu"
-      style={{ position: "fixed", left: pos.x, top: pos.y, width, zIndex: 1000 }}
+      className="editor-menu context-menu"
+      style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 1000 }}
       onPointerDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -152,7 +151,7 @@ export function ContextMenu({
       {subItems === "styles" && <StylesList state={state} />}
       {subItems === "cards" && <CardsList state={state} items={items} />}
       {!subItems && (
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-[var(--cards-rel-stroke)]">
           {items.map((item, i) =>
             item.sub ? (
               <button
@@ -165,7 +164,7 @@ export function ContextMenu({
               >
                 {item.icon}
                 <span className="flex-1 truncate">{item.label}</span>
-                <span className="text-[10px] opacity-50">▸</span>
+                <span className="text-[var(--cards-age)] opacity-50">▸</span>
               </button>
             ) : (
               <button
@@ -194,11 +193,11 @@ function BackRow({ title }: { title: string }) {
   const menu = useEditor((s) => s.menu);
   return (
     <button
-      className="menu-item mb-1"
+      className="menu-item mb-[var(--p-4)]"
       onClick={() => menu && openMenu({ ...menu, sub: null, subTitle: undefined })}
     >
-      <span className="text-[10px]">◀</span>
-      <span className="font-semibold text-xs">{title}</span>
+      <span className="text-[var(--cards-age)]">◀</span>
+      <span className="font-[var(--font-weight-bold-small)] text-[calc(var(--cards-age)+var(--cards-rel-stroke))]">{title}</span>
     </button>
   );
 }
@@ -232,7 +231,7 @@ function CardsList({ state, items }: { state: MenuState; items: MenuItem[] }) {
     <div>
       <BackRow title={state.subTitle ?? "Список карточек"} />
       {visibleCards.length === 0 && (
-        <div className="px-2 py-3 text-xs opacity-60">Нет других карточек</div>
+        <div className="px-[var(--p-8)] py-[var(--p-12)] text-[calc(var(--cards-age)+var(--cards-rel-stroke))] opacity-60">Нет других карточек</div>
       )}
       {visibleCards.map((card, i) => {
         if (state.elementId === card.id && state.sub !== "unlink") return null;
@@ -267,10 +266,10 @@ function StatusesList({ state }: { state: MenuState }) {
     <div>
       <BackRow title={state.subTitle ?? "Список статусов"} />
       {savedStatuses.length === 0 && (
-        <div className="px-2 py-3 text-xs opacity-60">Пока нет сохранённых статусов</div>
+        <div className="px-[var(--p-8)] py-[var(--p-12)] text-[calc(var(--cards-age)+var(--cards-rel-stroke))] opacity-60">Пока нет сохранённых статусов</div>
       )}
       {savedStatuses.map((item, i) => (
-        <div key={item.id} className="flex items-center gap-1">
+        <div key={item.id} className="flex items-center gap-[var(--p-4)]">
           <button
             className="menu-list-item flex-1 truncate"
             style={{ borderBottom: i === savedStatuses.length - 1 ? "none" : undefined }}
@@ -279,7 +278,7 @@ function StatusesList({ state }: { state: MenuState }) {
             {i + 1}. {richTextToPlainText(item.text) || "Статус"}
           </button>
           <button
-            className="menu-item--warn p-1.5 rounded hover:bg-black/5"
+            className="menu-item--warn p-[var(--p-6)] rounded-[var(--menus-radius)] hover:bg-[var(--c-hover)]"
             title="Удалить из сохранённых"
             onClick={() => deleteSavedStatus(item.id)}
           >
@@ -299,23 +298,22 @@ function StylesList({ state }: { state: MenuState }) {
     <div>
       <BackRow title={state.subTitle ?? "Список стилей"} />
       {savedArrowStyles.length === 0 && (
-        <div className="px-2 py-3 text-xs opacity-60">Пока нет сохранённых стилей</div>
+        <div className="px-[var(--p-8)] py-[var(--p-12)] text-[calc(var(--cards-age)+var(--cards-rel-stroke))] opacity-60">Пока нет сохранённых стилей</div>
       )}
       {savedArrowStyles.map((item, i) => (
-        <div key={item.id} className="flex items-center gap-1">
+        <div key={item.id} className="flex items-center gap-[var(--p-4)]">
           <button
-            className="menu-list-item flex flex-1 items-center gap-2 truncate"
+            className="menu-list-item flex flex-1 items-center gap-[var(--p-8)] truncate"
             style={{ borderBottom: i === savedArrowStyles.length - 1 ? "none" : undefined }}
             onClick={() => state.elementId && applySavedArrowStyle(state.elementId, item.id)}
           >
-            <svg width="26" height="10" viewBox="0 0 26 10">
+            <svg className="style-preview" viewBox="0 0 26 10">
               <line
                 x1="1"
                 y1="5"
                 x2="20"
                 y2="5"
                 stroke={item.color}
-                strokeWidth="2"
                 strokeDasharray={item.lineStyle === "dashed" ? "5 4" : undefined}
               />
               {item.head !== "none" && item.ends !== "start" && item.ends !== "none" && (
@@ -330,7 +328,7 @@ function StylesList({ state }: { state: MenuState }) {
             </span>
           </button>
           <button
-            className="menu-item--warn p-1.5 rounded hover:bg-black/5"
+            className="menu-item--warn p-[var(--p-6)] rounded-[var(--menus-radius)] hover:bg-[var(--c-hover)]"
             title="Удалить из сохранённых"
             onClick={() => deleteSavedArrowStyle(item.id)}
           >

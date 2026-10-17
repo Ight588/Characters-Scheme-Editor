@@ -143,7 +143,11 @@ export function EditableText({
           }}
           contentEditable
           suppressContentEditableWarning
-          onBlur={commit}
+          onBlur={(event) => {
+            const next = event.relatedTarget as Element | null;
+            if (next?.closest("[data-text-format-toolbar]")) return;
+            commit();
+          }}
           onKeyDown={handleKeyDown}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}

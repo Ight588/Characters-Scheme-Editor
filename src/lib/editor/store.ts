@@ -15,6 +15,7 @@ import {
   TextElement,
   View,
   DEFAULT_VIEW,
+  DEFAULT_STATUS_COLOR,
   makeArrow,
   makeCard,
   makeText,
@@ -375,7 +376,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().pushHistory();
     const point = normalizePoint(world);
     const card = makeCard(point.x, point.y, {
-      status: { text: "Статус", color: "#f6ecb5" },
+      status: { text: "Статус", color: DEFAULT_STATUS_COLOR },
     });
     set((s) => ({
       elements: { ...s.elements, [card.id]: card },

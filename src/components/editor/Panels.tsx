@@ -10,9 +10,11 @@ import {
   ArrowElement,
   BgImageFit,
   DEFAULT_ARROW_COLOR,
+  DEFAULT_SETTINGS,
 } from "@/lib/editor/types";
 import { requestBgImage } from "@/lib/editor/filepicker";
-import { ColorPicker } from "./ColorPicker";
+import { designPixels } from "@/lib/editor/design";
+import { ColorControl, ColorPicker } from "./ColorPicker";
 
 function usePanelClose(onClose: () => void) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -50,7 +52,7 @@ function usePanelClose(onClose: () => void) {
 function clampPanel(x: number, y: number, el: HTMLDivElement | null): { x: number; y: number } {
   if (!el) return { x, y };
   const r = el.getBoundingClientRect();
-  const pad = 8;
+  const pad = designPixels("--p-8");
   return {
     x: Math.min(Math.max(x, pad), window.innerWidth - r.width - pad),
     y: Math.min(Math.max(y, pad), window.innerHeight - r.height - pad),
@@ -131,20 +133,20 @@ export function CanvasBgPanel({ screen }: { screen: { x: number; y: number } }) 
 
   const reset = () => {
     pushHistory();
-    setSettings({ bgColor: "#f2eeeb", bgImage: undefined, bgFit: "tile", bgOpacity: 100 });
+    setSettings({ ...DEFAULT_SETTINGS, bgImage: undefined });
   };
 
   return createPortal(
     <div
       ref={mergedSetRef}
-      className="editor-panel"
-      style={{ position: "fixed", left: position.x, top: position.y, zIndex: 1000, width: 340 }}
+      className="editor-panel canvas-bg-panel"
+      style={{ position: "fixed", left: position.x, top: position.y, zIndex: 1000 }}
       onPointerDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* превью фона */}
       <button
-        className="w-full h-[120px] rounded-[6px] border border-[var(--c-stroke)] overflow-hidden mb-3 relative flex items-center justify-center"
+        className="canvas-bg-preview"
         style={{ background: settings.bgColor }}
         title="Нажмите, чтобы выбрать изображение фона"
         onClick={() => requestBgImage()}
@@ -159,11 +161,11 @@ export function CanvasBgPanel({ screen }: { screen: { x: number; y: number } }) 
             draggable={false}
           />
         ) : (
-          <span className="text-xs opacity-50">Нажмите, чтобы выбрать изображение</span>
+          <span className="panel-hint">Нажмите, чтобы выбрать изображение</span>
         )}
       </button>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-[var(--p-12)]">
         <div className="panel-row">
           <div className="flex-1 flex flex-col">
             <span className="panel-label">Размещение изображения</span>
@@ -183,68 +185,55 @@ export function CanvasBgPanel({ screen }: { screen: { x: number; y: number } }) 
               ))}
             </select>
           </div>
-          <input
-            type="color"
-            value={settings.bgColor}
-            onChange={(e) => setSettings({ bgColor: e.target.value })}
-            className="h-9 w-9 rounded border border-[var(--c-stroke)] bg-transparent cursor-pointer"
-            title="Цвет фона"
-          />
         </div>
+
+        <ColorControl
+          value={settings.bgColor}
+          onChange={(bgColor) => setSettings({ bgColor })}
+        />
 
         <div className="panel-row">
           <div className="flex-1 flex flex-col">
             <span className="panel-label">Прозрачность изображения</span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-[var(--p-8)]">
               <input
                 type="range"
                 min={0}
                 max={100}
                 value={settings.bgOpacity}
                 className="tslider flex-1"
-                style={{ ["--fill" as string]: `${settings.bgOpacity}%` }}
                 onChange={(e) => setSettings({ bgOpacity: Number(e.target.value) })}
                 disabled={!settings.bgImage}
               />
-              <span className="text-xs w-9 text-right opacity-70">{settings.bgOpacity}%</span>
+              <span className="panel-value">{settings.bgOpacity}%</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-[var(--p-8)]">
           <button
-            className="under-action text-xs text-[var(--btn-warn-text)]"
-            style={{ borderBottomColor: "rgba(174,16,16,0.35)" }}
+            className="under-action panel-action panel-action--warn"
             onClick={() => {
               pushHistory();
               setSettings({ bgImage: undefined });
             }}
             disabled={!settings.bgImage}
           >
-            <Trash2 size={13} /> Удалить изображение
+            <Trash2 /> Удалить изображение
           </button>
-          <button className="under-action text-xs" onClick={reset}>
-            <RotateCcw size={13} /> Сбросить фон
+          <button className="under-action panel-action" onClick={reset}>
+            <RotateCcw /> Сбросить фон
           </button>
           <div className="flex-1" />
           <button
-            className="btn-check w-8 h-8 rounded-[6px] flex items-center justify-center"
+            className="btn-check panel-done"
             title="Готово"
             onClick={() => openPanel(null)}
           >
-            <Check size={16} />
+            <Check />
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs opacity-70">Цвет фона:</span>
-          <input
-            className="u-select flex-1"
-            style={{ padding: "5px 8px" }}
-            value={settings.bgColor}
-            onChange={(e) => setSettings({ bgColor: e.target.value })}
-          />
-        </div>
       </div>
     </div>,
     document.body

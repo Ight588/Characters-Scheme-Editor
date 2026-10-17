@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { RotateCcw, Save } from "lucide-react";
-import type { ArrowEnds, ArrowThickness } from "@/lib/editor/types";
+import { Pipette, RotateCcw, Save } from "lucide-react";
+import { designPixels } from "@/lib/editor/design";
+import {
+  DEFAULT_TEXT_COLOR,
+  type ArrowEnds,
+  type ArrowThickness,
+} from "@/lib/editor/types";
 
 type Point = { x: number; y: number };
+type HsvColor = { h: number; s: number; v: number };
 
 type CommonProps = {
   value: string;
@@ -32,11 +38,6 @@ type ExpandedColorPickerProps = CommonProps & {
 
 export type ColorPickerProps = CompactColorPickerProps | ExpandedColorPickerProps;
 
-const PICKER_SIZE = {
-  expanded: { width: 245, height: 193 },
-  compact: { width: 127, height: 155 },
-} as const;
-
 function normalizeHex(value: string): string {
   const color = value.trim();
   if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
@@ -44,19 +45,65 @@ function normalizeHex(value: string): string {
     return `#${color
       .slice(1)
       .split("")
-      .map((char) => char + char)
+      .map((character) => character + character)
       .join("")}`.toLowerCase();
   }
-  return "#000000";
+  return DEFAULT_TEXT_COLOR;
 }
 
-function clampPosition(position: Point, variant: ColorPickerProps["variant"]): Point {
-  if (typeof window === "undefined") return position;
-  const { width, height } = PICKER_SIZE[variant];
-  const padding = 8;
+function hexToHsv(value: string): HsvColor {
+  const color = normalizeHex(value);
+  const red = Number.parseInt(color.slice(1, 3), 16) / 255;
+  const green = Number.parseInt(color.slice(3, 5), 16) / 255;
+  const blue = Number.parseInt(color.slice(5, 7), 16) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let hue = 0;
+  if (delta) {
+    if (max === red) hue = 60 * (((green - blue) / delta) % 6);
+    else if (max === green) hue = 60 * ((blue - red) / delta + 2);
+    else hue = 60 * ((red - green) / delta + 4);
+  }
+  if (hue < 0) hue += 360;
+  return { h: hue, s: max === 0 ? 0 : delta / max, v: max };
+}
+
+function hsvToHex({ h, s, v }: HsvColor): string {
+  const chroma = v * s;
+  const section = h / 60;
+  const x = chroma * (1 - Math.abs((section % 2) - 1));
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (section < 1) [red, green] = [chroma, x];
+  else if (section < 2) [red, green] = [x, chroma];
+  else if (section < 3) [green, blue] = [chroma, x];
+  else if (section < 4) [green, blue] = [x, chroma];
+  else if (section < 5) [red, blue] = [x, chroma];
+  else [red, blue] = [chroma, x];
+
+  const match = v - chroma;
+  const channel = (number: number) =>
+    Math.round((number + match) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(red)}${channel(green)}${channel(blue)}`;
+}
+
+function clampPosition(position: Point, element: HTMLElement): Point {
+  const bounds = element.getBoundingClientRect();
+  const padding = designPixels("--p-8");
   return {
-    x: Math.min(Math.max(position.x, padding), Math.max(padding, window.innerWidth - width - padding)),
-    y: Math.min(Math.max(position.y, padding), Math.max(padding, window.innerHeight - height - padding)),
+    x: Math.min(
+      Math.max(position.x, padding),
+      Math.max(padding, window.innerWidth - bounds.width - padding)
+    ),
+    y: Math.min(
+      Math.max(position.y, padding),
+      Math.max(padding, window.innerHeight - bounds.height - padding)
+    ),
   };
 }
 
@@ -86,48 +133,151 @@ function useOutsideClose(onClose: () => void) {
   return ref;
 }
 
-function ColorControl({ value, onChange }: Pick<CommonProps, "value" | "onChange">) {
-  const color = normalizeHex(value);
+type EyeDropperWindow = Window &
+  typeof globalThis & {
+    EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> };
+  };
+
+export function ColorControl({
+  value,
+  onChange,
+}: Pick<CommonProps, "value" | "onChange">) {
+  const normalized = normalizeHex(value);
+  const [hsv, setHsv] = useState<HsvColor>(() => hexToHsv(normalized));
+  const [hexDraft, setHexDraft] = useState(normalized);
+  const [lastNormalized, setLastNormalized] = useState(normalized);
+  const dragPointer = useRef<number | null>(null);
+  const eyeDropperAvailable =
+    typeof window !== "undefined" && Boolean((window as EyeDropperWindow).EyeDropper);
+
+  if (normalized !== lastNormalized) {
+    const next = hexToHsv(normalized);
+    setLastNormalized(normalized);
+    setHsv((current) => ({ ...next, h: next.s === 0 ? current.h : next.h }));
+    setHexDraft(normalized);
+  }
+
+  const emit = (next: HsvColor) => {
+    const color = hsvToHex(next);
+    setHsv(next);
+    setHexDraft(color);
+    onChange(color);
+  };
+
+  const updateSaturationValue = (
+    event: React.PointerEvent<HTMLDivElement>
+  ) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    emit({
+      h: hsv.h,
+      s: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
+      v: Math.min(1, Math.max(0, 1 - (event.clientY - bounds.top) / bounds.height)),
+    });
+  };
+
+  const commitHex = (raw: string) => {
+    if (!/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(raw.trim())) {
+      setHexDraft(hsvToHex(hsv));
+      return;
+    }
+    const color = normalizeHex(raw);
+    const next = hexToHsv(color);
+    setHsv((current) => ({ ...next, h: next.s === 0 ? current.h : next.h }));
+    setHexDraft(color);
+    onChange(color);
+  };
+
+  const pickFromScreen = async () => {
+    const EyeDropper = (window as EyeDropperWindow).EyeDropper;
+    if (!EyeDropper) return;
+    try {
+      const result = await new EyeDropper().open();
+      commitHex(result.sRGBHex);
+    } catch {
+      // Отмена системной пипетки не меняет выбранный цвет.
+    }
+  };
 
   return (
-    <div className="flex h-[123px] w-[95px] flex-none flex-col items-center gap-[8px]" data-color-control>
-      <label
-        className="relative h-[96px] min-h-[95px] w-[95px] min-w-[95px] flex-none cursor-pointer overflow-hidden rounded-[5px]"
-        style={{ background: "linear-gradient(180deg, #D9D9D9 0%, #737373 100%)" }}
-        title="Выбрать цвет"
+    <div className="color-control" data-color-control>
+      <div
+        className="color-field"
+        style={{ backgroundColor: `hsl(${hsv.h} 100% 50%)` }}
+        role="slider"
+        tabIndex={0}
+        aria-label="Насыщенность и яркость"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(hsv.s * 100)}
+        aria-valuetext={hsvToHex(hsv)}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          dragPointer.current = event.pointerId;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          updateSaturationValue(event);
+        }}
+        onPointerMove={(event) => {
+          if (dragPointer.current === event.pointerId) updateSaturationValue(event);
+        }}
+        onPointerUp={(event) => {
+          if (dragPointer.current === event.pointerId) dragPointer.current = null;
+        }}
+        onPointerCancel={() => {
+          dragPointer.current = null;
+        }}
       >
-        <input
-          aria-label="Выбрать цвет"
-          type="color"
-          value={color}
-          onChange={(event) => onChange(event.target.value.toLowerCase())}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        <span
+          className="color-field-marker"
+          style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
         />
-      </label>
+      </div>
 
-      <div className="flex h-[19px] w-[95px] flex-none items-center gap-[10px] self-stretch rounded-[3px] bg-[rgba(154,124,94,0.07)] p-[4px]">
+      <input
+        className="color-hue-slider"
+        type="range"
+        min={0}
+        max={359}
+        step={1}
+        value={Math.round(hsv.h)}
+        aria-label="Оттенок"
+        onChange={(event) => emit({ ...hsv, h: Number(event.target.value) })}
+      />
+
+      <div className="color-hex-row">
         <input
-          key={color}
           aria-label="HEX-код цвета"
-          defaultValue={color}
+          value={hexDraft}
           maxLength={7}
           spellCheck={false}
-          className="color-picker-hex h-[11px] min-w-0 flex-1 border-0 bg-transparent p-0 text-[9px] leading-[11px] text-black/20 outline-none"
+          className="color-picker-hex"
           onChange={(event) => {
-            const next = event.target.value.trim();
-            if (/^#[0-9a-f]{6}$/i.test(next)) onChange(next.toLowerCase());
+            const next = event.target.value;
+            setHexDraft(next);
+            if (/^#[0-9a-f]{6}$/i.test(next)) commitHex(next);
           }}
-          onBlur={(event) => {
-            const next = event.currentTarget.value.trim();
-            if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(next)) {
-              const normalized = normalizeHex(next);
-              event.currentTarget.value = normalized;
-              if (normalized !== color) onChange(normalized);
-            } else {
-              event.currentTarget.value = color;
+          onBlur={(event) => commitHex(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitHex(event.currentTarget.value);
+              event.currentTarget.blur();
             }
           }}
         />
+        <button
+          type="button"
+          className="color-eyedropper"
+          aria-label="Взять цвет с экрана"
+          title={
+            eyeDropperAvailable
+              ? "Взять цвет с экрана"
+              : "Пипетка не поддерживается этим браузером"
+          }
+          disabled={!eyeDropperAvailable}
+          onClick={pickFromScreen}
+        >
+          <Pipette aria-hidden />
+        </button>
       </div>
     </div>
   );
@@ -145,10 +295,8 @@ function StyleField({
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex h-[33px] w-[102px] flex-none flex-col items-start gap-[6px] self-stretch">
-      <span className="h-[11px] w-[102px] text-[9px] font-semibold leading-[11px] text-[#0B0A0A]">
-        {label}
-      </span>
+    <label className="color-style-field">
+      <span>{label}</span>
       <select
         aria-label={label}
         className="color-picker-select"
@@ -163,28 +311,31 @@ function StyleField({
 
 export function ColorPicker(props: ColorPickerProps) {
   const ref = useOutsideClose(props.onClose);
-  const position = clampPosition(props.position, props.variant);
+  const [position, setPosition] = useState(props.position);
   const expanded = props.variant === "expanded";
+
+  useEffect(() => {
+    if (ref.current) setPosition(clampPosition(props.position, ref.current));
+  }, [props.position.x, props.position.y, props.variant, ref]);
 
   const panel = (
     <div
       ref={ref}
       data-color-picker-variant={props.variant}
-      className={`color-picker fixed z-[1001] box-border flex flex-col items-start justify-center gap-[12px] rounded-[8px] border border-black/20 bg-[#F9F7F6] p-[16px] no-select ${
-        expanded ? "h-[193px] w-[245px]" : "h-[155px] w-[127px]"
-      }`}
+      data-text-format-toolbar
+      className={`color-picker color-picker--${props.variant} no-select`}
       style={{ left: position.x, top: position.y }}
       onPointerDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
       {expanded ? (
         <>
-          <div className="flex h-[123px] w-[213px] flex-none items-center gap-[16px] self-stretch">
-            <div className="flex h-[123px] w-[102px] flex-1 flex-col items-start gap-[12px] self-stretch">
+          <div className="color-picker-expanded-content">
+            <div className="color-picker-style-fields">
               <StyleField
                 label="Стиль"
                 value={props.lineStyle}
-                onChange={(value) => props.onLineStyleChange(value as "solid" | "dashed")}
+                onChange={(next) => props.onLineStyleChange(next as "solid" | "dashed")}
               >
                 <option value="solid">Обычный</option>
                 <option value="dashed">Пунктирный</option>
@@ -192,7 +343,7 @@ export function ColorPicker(props: ColorPickerProps) {
               <StyleField
                 label="Толщина"
                 value={props.thickness}
-                onChange={(value) => props.onThicknessChange(value as ArrowThickness)}
+                onChange={(next) => props.onThicknessChange(next as ArrowThickness)}
               >
                 <option value="thin">Тонкая</option>
                 <option value="normal">Обычная</option>
@@ -201,7 +352,7 @@ export function ColorPicker(props: ColorPickerProps) {
               <StyleField
                 label="Наличие кончиков"
                 value={props.ends}
-                onChange={(value) => props.onEndsChange(value as ArrowEnds)}
+                onChange={(next) => props.onEndsChange(next as ArrowEnds)}
               >
                 <option value="both">Оба конца</option>
                 <option value="end">В конец</option>
@@ -209,26 +360,17 @@ export function ColorPicker(props: ColorPickerProps) {
                 <option value="none">Без концов</option>
               </StyleField>
             </div>
-
             <ColorControl value={props.value} onChange={props.onChange} />
           </div>
 
-          <div className="flex h-[26px] w-[213px] flex-none items-center gap-[6px]">
-            <button
-              type="button"
-              className="flex h-[26px] w-[106px] flex-none items-center gap-[4px] rounded-[3px] p-[6px] text-[#0B0A0A] hover:bg-black/5"
-              onClick={props.onSave}
-            >
-              <Save className="flex-none" size={14} strokeWidth={1.7} />
-              <span className="whitespace-nowrap text-[9px] leading-[11px]">Сохранить стиль</span>
+          <div className="color-picker-actions">
+            <button type="button" onClick={props.onSave}>
+              <Save aria-hidden />
+              <span>Сохранить стиль</span>
             </button>
-            <button
-              type="button"
-              className="flex h-[26px] w-[101px] flex-none items-center gap-[4px] rounded-[3px] p-[6px] text-[#AE1010] hover:bg-[rgba(174,16,16,0.06)]"
-              onClick={props.onReset}
-            >
-              <RotateCcw className="flex-none" size={14} strokeWidth={1.7} />
-              <span className="whitespace-nowrap text-[9px] leading-[11px]">Сбросить стиль</span>
+            <button type="button" className="color-picker-reset" onClick={props.onReset}>
+              <RotateCcw aria-hidden />
+              <span>Сбросить стиль</span>
             </button>
           </div>
         </>

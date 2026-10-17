@@ -148,8 +148,11 @@ export type PersistedState = {
 
 export const CURRENT_FILE_VERSION = 1;
 
+export const DEFAULT_CANVAS_COLOR = "#f2eeeb";
+export const DEFAULT_TEXT_COLOR = "#161414";
+
 export const DEFAULT_SETTINGS: CanvasSettings = {
-  bgColor: "#f2eeeb",
+  bgColor: DEFAULT_CANVAS_COLOR,
   bgFit: "tile",
   bgOpacity: 100,
 };
@@ -177,21 +180,8 @@ export function normalizeCanvasSettings(
   };
 }
 
-export const DEFAULT_ARROW_COLOR = "#b3574f";
-export const STATUS_COLORS = [
-  "#f6ecb5",
-  "#c6fd9d",
-  "#b8e3f5",
-  "#f3c6d9",
-  "#e4d4f7",
-  "#f8d8b8",
-  "#d9e8cf",
-  "#e8e6e3",
-  "#f3aaaa",
-  "#9a7c5e",
-];
-
-export const DEFAULT_STATUS_COLOR = "#f6ecb5";
+export const DEFAULT_ARROW_COLOR = "#9a7c5e";
+export const DEFAULT_STATUS_COLOR = "#c6fd9d";
 
 /* ---------- Фабрики элементов ---------- */
 
@@ -247,16 +237,10 @@ export function makeText(x: number, y: number, patch: Partial<TextElement> = {})
     width: 220,
     fontSize: 14,
     rotation: 0,
-    color: "#161414",
+    color: DEFAULT_TEXT_COLOR,
     ...patch,
   };
 }
-
-export const ARROW_THICKNESS_PX: Record<ArrowThickness, number> = {
-  thin: 1.5,
-  normal: 2.5,
-  thick: 4.5,
-};
 
 export const CARD_COMPACT_MAX_WIDTH = 80;
 export const CARD_EXPANDED_WIDTH = 450;
