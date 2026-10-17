@@ -22,6 +22,8 @@ function headPolygons(
   size: number,
   color: string
 ): React.ReactNode | null {
+  if (head === "none") return null;
+
   const angle = Math.atan2(tip.y - other.y, tip.x - other.x);
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
@@ -50,6 +52,42 @@ function headPolygons(
   return <polygon points={pts} fill={color} />;
 }
 
+function shaftInset(head: ArrowHead, headSize: number, width: number): number {
+  if (head === "triangle") {
+    // Учитываем круглый strokeLinecap: видимая линия заканчивается ровно у основания.
+    return headSize + width / 2;
+  }
+  if (head === "line") {
+    // Убираем стержень из вершины открытого наконечника, сохраняя визуальное соединение.
+    return Math.max(2, width * 1.25);
+  }
+  return 0;
+}
+
+function insetSegment(
+  from: Point,
+  to: Point,
+  startInset: number,
+  endInset: number
+): { from: Point; to: Point } {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 0.001) return { from, to };
+
+  // Короткая стрелка не должна инвертировать направление стержня.
+  const requested = startInset + endInset;
+  const factor = requested > length ? Math.max(0, length - 0.01) / requested : 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const safeStart = startInset * factor;
+  const safeEnd = endInset * factor;
+  return {
+    from: { x: from.x + ux * safeStart, y: from.y + uy * safeStart },
+    to: { x: to.x - ux * safeEnd, y: to.y - uy * safeEnd },
+  };
+}
+
 function ArrowShape({
   arrow,
   from,
@@ -70,11 +108,14 @@ function ArrowShape({
 
   const width = ARROW_THICKNESS_PX[arrow.thickness];
   const dashed = arrow.lineStyle === "dashed";
-  const d = `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
   const headSize = width * 3.4 + 4;
 
   const showStart = arrow.ends === "both" || arrow.ends === "start";
   const showEnd = arrow.ends === "both" || arrow.ends === "end";
+  const inset = shaftInset(arrow.head, headSize, width);
+  const shaft = insetSegment(from, to, showStart ? inset : 0, showEnd ? inset : 0);
+  const hitPath = `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  const shaftPath = `M ${shaft.from.x} ${shaft.from.y} L ${shaft.to.x} ${shaft.to.y}`;
 
   const dragState = useRef<{ moved: boolean; pushed: boolean } | null>(null);
 
@@ -157,7 +198,7 @@ function ArrowShape({
   return (
     <g className={`arrow-group ${selected ? "arrow-selected" : ""}`} data-arrow-id={arrow.id}>
       <path
-        d={d}
+        d={hitPath}
         stroke="transparent"
         strokeWidth={Math.max(16, width + 12)}
         fill="none"
@@ -177,7 +218,7 @@ function ArrowShape({
         }}
       />
       <path
-        d={d}
+        d={shaftPath}
         stroke={arrow.color}
         strokeWidth={width}
         strokeDasharray={dashed ? `${width * 2.6} ${width * 2}` : undefined}

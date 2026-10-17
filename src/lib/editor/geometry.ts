@@ -13,6 +13,9 @@ export type Size = { w: number; h: number };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Edge = "top" | "bottom" | "left" | "right";
 
+/** Зазор между границей карточки и привязанным концом стрелки. */
+export const CARD_ARROW_GAP = 12;
+
 /** Прямоугольник карточки (использует измеренные размеры из реестра, если есть) */
 export function getCardRect(card: CardElement, rects: Record<string, Size>): Rect {
   const fallback: Size = card.collapsed
@@ -74,6 +77,19 @@ export function edgeAnchor(rect: Rect, edge: Edge, t: number): Point {
   }
 }
 
+export function offsetFromEdge(point: Point, edge: Edge, gap = CARD_ARROW_GAP): Point {
+  switch (edge) {
+    case "top":
+      return { x: point.x, y: point.y - gap };
+    case "bottom":
+      return { x: point.x, y: point.y + gap };
+    case "left":
+      return { x: point.x - gap, y: point.y };
+    case "right":
+      return { x: point.x + gap, y: point.y };
+  }
+}
+
 export function rectCenter(rect: Rect): Point {
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
@@ -82,7 +98,7 @@ export type ArrowGeometry = { from: Point; to: Point };
 
 /**
  * Вычисляет фактические точки стрелок.
- * Конец, привязанный к карточке, прилипает к центру ближайшей грани;
+ * Конец, привязанный к карточке, располагается у ближайшей грани с зазором 12 px;
  * несколько связей на одной грани распределяются равномерно.
  */
 export function computeArrowGeometries(
@@ -148,7 +164,8 @@ export function computeArrowGeometries(
       );
       sorted.forEach((req, i) => {
         const t = (i + 1) / (sorted.length + 1);
-        const point = edgeAnchor(rect, edge, t);
+        const edgePoint = edgeAnchor(rect, edge, t);
+        const point = offsetFromEdge(edgePoint, edge);
         const rec = anchors.get(req.arrowId) ?? {};
         rec[req.end] = point;
         anchors.set(req.arrowId, rec);
