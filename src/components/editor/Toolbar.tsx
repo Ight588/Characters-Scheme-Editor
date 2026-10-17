@@ -71,9 +71,9 @@ export function Toolbar() {
   if (uiHidden) return null;
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-40 flex items-start justify-between gap-2 no-select pointer-events-none p-4 sm:p-5 md:p-6">
+    <div className="absolute top-0 left-0 right-0 z-40 flex flex-row flex-wrap items-start justify-between gap-2 no-select pointer-events-none p-4 sm:p-5 md:p-6">
       {/* Заголовок */}
-      <div className="pointer-events-auto flex-1 min-w-0">
+      <div className="pointer-events-auto min-w-0 flex-1 basis-[240px] pr-[32px]">
         {isEditingTitle ? (
           <div
             ref={titleRef}
@@ -110,7 +110,7 @@ export function Toolbar() {
       </div>
 
       {/* Кнопки */}
-      <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <div className="pointer-events-auto ml-auto flex max-w-full flex-row flex-wrap items-center justify-end gap-1.5 sm:gap-2">
         <button
           className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
           title="Отменить (Ctrl+Z)"
