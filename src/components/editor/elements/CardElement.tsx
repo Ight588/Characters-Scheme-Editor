@@ -2,10 +2,10 @@
 
 /* Карточка персонажа: свёрнутая и развёрнутая версии */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { CircleUserRound } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
-import { CardElement, CARD_COLLAPSED_WIDTH, CARD_EXPANDED_WIDTH } from "@/lib/editor/types";
+import { CardElement, CARD_COMPACT_MAX_WIDTH } from "@/lib/editor/types";
 import { requestAvatar } from "@/lib/editor/filepicker";
 import { EditableText } from "../EditableText";
 
@@ -87,7 +87,6 @@ export function CardView({ card }: { card: CardElement }) {
   const collapsed = exportMode
     ? exportMode.mode === "mini"
     : card.collapsed;
-  const width = collapsed ? CARD_COLLAPSED_WIDTH : CARD_EXPANDED_WIDTH;
 
   useEffect(() => {
     const el = boxRef.current;
@@ -114,8 +113,14 @@ export function CardView({ card }: { card: CardElement }) {
     onPointerDown(e, dragMove);
   };
 
-  const statusStyle = card.status
-    ? { background: card.status.color, color: "#161414" }
+  const statusStyle: React.CSSProperties | undefined = card.status
+    ? {
+        background: card.status.color,
+        color: "#161414",
+        ...(collapsed
+          ? { maxWidth: "100%", whiteSpace: "normal", overflowWrap: "anywhere" }
+          : {}),
+      }
     : undefined;
 
   const avatar = (
@@ -145,7 +150,8 @@ export function CardView({ card }: { card: CardElement }) {
       field="years"
       value={card.years}
       onChange={(v) => updateElement(card.id, { years: v })}
-      className={`text-center text-[var(--cards-age)] ${card.years ? "opacity-70" : "opacity-40"}`}
+      wrap={collapsed}
+      className={`text-center text-[var(--cards-age)] ${collapsed ? "max-w-full break-all" : ""} ${card.years ? "opacity-70" : "opacity-40"}`}
       placeholder="Годы…"
     />
   );
@@ -174,7 +180,14 @@ export function CardView({ card }: { card: CardElement }) {
         onChange={(v) =>
           updateElement(card.id, { status: { ...card.status!, text: v } })
         }
-        style={{ display: "inline-block", minWidth: 24, textAlign: "center" }}
+        wrap={collapsed}
+        style={{
+          display: "inline-block",
+          minWidth: 24,
+          maxWidth: "100%",
+          overflowWrap: "anywhere",
+          textAlign: "center",
+        }}
       />
     </span>
   );
@@ -183,8 +196,12 @@ export function CardView({ card }: { card: CardElement }) {
     <div
       ref={boxRef}
       data-element-id={card.id}
-      className={`p-card no-select absolute top-0 left-0 ${selectedId === card.id && !exportMode ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
-      style={{ width, transform: `translate(${card.x}px, ${card.y}px)` }}
+      data-card-variant={collapsed ? "compact" : "expanded"}
+      className={`p-card no-select absolute top-0 left-0 w-max ${selectedId === card.id && !exportMode ? "outline outline-[1.5px] outline-[#9a7c5e]/60" : ""}`}
+      style={{
+        maxWidth: collapsed ? CARD_COMPACT_MAX_WIDTH : undefined,
+        transform: `translate(${card.x}px, ${card.y}px)`,
+      }}
       onPointerDown={handlePointerDown}
       onContextMenu={(e) => {
         if (exportMode) return;
@@ -208,6 +225,7 @@ export function CardView({ card }: { card: CardElement }) {
             field="name"
             value={card.name}
             onChange={(v) => updateElement(card.id, { name: v })}
+            wrap
             className="font-semibold text-[14px] leading-tight text-center max-w-full"
             style={{ wordBreak: "break-word" }}
           />
@@ -219,7 +237,7 @@ export function CardView({ card }: { card: CardElement }) {
             {avatar}
             {years}
           </div>
-          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+          <div className="flex flex-col gap-1.5">
             <div className="flex items-start gap-2 flex-wrap">
               <EditableText
                 id={card.id}

@@ -13,6 +13,7 @@ type EditableTextProps = {
   className?: string;
   style?: React.CSSProperties;
   multiline?: boolean;
+  wrap?: boolean;
   title?: string;
   as?: "span" | "div";
   placeholder?: string;
@@ -26,6 +27,7 @@ export function EditableText({
   className,
   style,
   multiline = false,
+  wrap = false,
   title,
   as = "span",
   placeholder,
@@ -91,7 +93,10 @@ export function EditableText({
       <Tag
         ref={ref}
         className={`editable-active ${className ?? ""}`}
-        style={{ ...style, whiteSpace: multiline ? "pre-wrap" : "nowrap" }}
+        style={{
+          ...style,
+          whiteSpace: multiline ? "pre-wrap" : wrap ? "normal" : "nowrap",
+        }}
         contentEditable
         suppressContentEditableWarning
         onBlur={commit}

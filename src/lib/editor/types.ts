@@ -252,5 +252,4 @@ export const ARROW_THICKNESS_PX: Record<ArrowThickness, number> = {
   thick: 4.5,
 };
 
-export const CARD_COLLAPSED_WIDTH = 140;
-export const CARD_EXPANDED_WIDTH = 300; // Colors/Cards/DecWidth
+export const CARD_COMPACT_MAX_WIDTH = 200;
