@@ -13,7 +13,13 @@ export function useElementDrag(kind: "move" | "arrow-body" | "arrow-end") {
   const pushHistory = useEditor((s) => s.pushHistory);
   const view = useEditor((s) => s.view);
 
-  const start = useRef<{ sx: number; sy: number; pushed: boolean } | null>(null);
+  const start = useRef<{
+    originX: number;
+    originY: number;
+    lastX: number;
+    lastY: number;
+    pushed: boolean;
+  } | null>(null);
   const moved = useRef(false);
 
   const onPointerDown = useCallback(
@@ -21,29 +27,45 @@ export function useElementDrag(kind: "move" | "arrow-body" | "arrow-end") {
       if (e.button !== 0) return;
       e.stopPropagation();
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      start.current = { sx: e.clientX, sy: e.clientY, pushed: false };
+      start.current = {
+        originX: e.clientX,
+        originY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        pushed: false,
+      };
       moved.current = false;
 
       const move = (ev: PointerEvent) => {
-        if (!start.current) return;
-        const dxScreen = ev.clientX - start.current.sx;
-        const dyScreen = ev.clientY - start.current.sy;
-        if (!start.current.pushed && Math.hypot(dxScreen, dyScreen) > 3) {
+        const drag = start.current;
+        if (!drag) return;
+
+        const totalDx = ev.clientX - drag.originX;
+        const totalDy = ev.clientY - drag.originY;
+        if (!drag.pushed && Math.hypot(totalDx, totalDy) > 3) {
           pushHistory();
-          start.current.pushed = true;
+          drag.pushed = true;
           moved.current = true;
         }
-        if (start.current.pushed) {
-          onMove(dxScreen / view.scale, dyScreen / view.scale, ev);
-        }
+        if (!drag.pushed) return;
+
+        // Передаём приращение с прошлого pointermove, а не полный путь от точки
+        // старта: обработчики прибавляют delta к текущей позиции элемента.
+        const dxScreen = ev.clientX - drag.lastX;
+        const dyScreen = ev.clientY - drag.lastY;
+        drag.lastX = ev.clientX;
+        drag.lastY = ev.clientY;
+        onMove(dxScreen / view.scale, dyScreen / view.scale, ev);
       };
       const up = () => {
         start.current = null;
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
     },
     [pushHistory, view.scale]
   );
@@ -117,6 +139,17 @@ export function CardView({ card }: { card: CardElement }) {
     </div>
   );
 
+  const years = (
+    <EditableText
+      id={card.id}
+      field="years"
+      value={card.years}
+      onChange={(v) => updateElement(card.id, { years: v })}
+      className={`text-center text-[var(--cards-age)] ${card.years ? "opacity-70" : "opacity-40"}`}
+      placeholder="Годы…"
+    />
+  );
+
   const statusChip = card.status && (
     <span
       className="status-chip"
@@ -169,6 +202,7 @@ export function CardView({ card }: { card: CardElement }) {
       {collapsed ? (
         <div className="flex flex-col items-center gap-1.5 px-3 py-4">
           {avatar}
+          {years}
           <EditableText
             id={card.id}
             field="name"
@@ -177,19 +211,14 @@ export function CardView({ card }: { card: CardElement }) {
             className="font-semibold text-[14px] leading-tight text-center max-w-full"
             style={{ wordBreak: "break-word" }}
           />
-          <EditableText
-            id={card.id}
-            field="years"
-            value={card.years}
-            onChange={(v) => updateElement(card.id, { years: v })}
-            className={`text-[var(--cards-age)] ${card.years ? "opacity-70" : "opacity-40"}`}
-            placeholder="Годы…"
-          />
           {statusChip}
         </div>
       ) : (
         <div className="flex gap-3" style={{ padding: "var(--p-16)" }}>
-          {avatar}
+          <div className="flex shrink-0 flex-col items-center gap-1.5">
+            {avatar}
+            {years}
+          </div>
           <div className="flex flex-col gap-1.5 min-w-0 flex-1">
             <div className="flex items-start gap-2 flex-wrap">
               <EditableText
@@ -211,16 +240,6 @@ export function CardView({ card }: { card: CardElement }) {
               className="text-[12px] leading-[1.45] text-[var(--c-cards-text)] flex-1"
               style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
             />
-            <div className="pt-1 mt-auto">
-              <EditableText
-                id={card.id}
-                field="years"
-                value={card.years}
-                onChange={(v) => updateElement(card.id, { years: v })}
-                className={`text-[var(--cards-age)] ${card.years ? "opacity-70" : "opacity-40"}`}
-                placeholder="Годы…"
-              />
-            </div>
           </div>
         </div>
       )}
