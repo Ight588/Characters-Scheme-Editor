@@ -5,8 +5,7 @@ import {
   ImageElement,
   Point,
   TextElement,
-  CARD_COLLAPSED_WIDTH,
-  CARD_EXPANDED_WIDTH,
+  CARD_COMPACT_MAX_WIDTH,
 } from "./types";
 
 export type Size = { w: number; h: number };
@@ -16,11 +15,14 @@ export type Edge = "top" | "bottom" | "left" | "right";
 /** Зазор между границей карточки и привязанным концом стрелки. */
 export const CARD_ARROW_GAP = 12;
 
-/** Прямоугольник карточки (использует измеренные размеры из реестра, если есть) */
+/**
+ * Прямоугольник карточки. Реальные адаптивные размеры всегда поступают от
+ * ResizeObserver; fallback используется только до первого измерения DOM.
+ */
 export function getCardRect(card: CardElement, rects: Record<string, Size>): Rect {
   const fallback: Size = card.collapsed
-    ? { w: CARD_COLLAPSED_WIDTH, h: 180 }
-    : { w: CARD_EXPANDED_WIDTH, h: 160 };
+    ? { w: CARD_COMPACT_MAX_WIDTH, h: 180 }
+    : { w: 300, h: 160 };
   const s = rects[card.id] ?? fallback;
   return { x: card.x, y: card.y, w: s.w, h: s.h };
 }

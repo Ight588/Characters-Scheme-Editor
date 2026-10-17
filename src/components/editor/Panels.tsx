@@ -8,12 +8,11 @@ import { Check, Trash2, RotateCcw } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
 import {
   ArrowElement,
-  ArrowEnds,
-  ArrowHead,
-  ArrowThickness,
   BgImageFit,
+  DEFAULT_ARROW_COLOR,
 } from "@/lib/editor/types";
 import { requestBgImage } from "@/lib/editor/filepicker";
+import { ColorPicker } from "./ColorPicker";
 
 function usePanelClose(onClose: () => void) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -63,149 +62,42 @@ function clampPanel(x: number, y: number, el: HTMLDivElement | null): { x: numbe
 export function ArrowStylePanel({ id: arrowId, screen }: { id: string; screen: { x: number; y: number } }) {
   const arrow = useEditor((s) => s.elements[arrowId]) as ArrowElement | undefined;
   const updateElement = useEditor((s) => s.updateElement);
-  const removeElement = useEditor((s) => s.removeElement);
+  const pushHistory = useEditor((s) => s.pushHistory);
+  const saveArrowStyleFrom = useEditor((s) => s.saveArrowStyleFrom);
   const openPanel = useEditor((s) => s.openPanel);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [position, setPos] = React.useState(screen);
-
-  useEffect(() => {
-    setPos(clampPanel(screen.x, screen.y, ref.current));
-     
-  }, []);
-
-  const panelSetRef = usePanelClose(() => openPanel(null));
-  const mergedSetRef = (el: HTMLDivElement | null) => {
-    ref.current = el;
-    panelSetRef(el);
-  };
 
   if (!arrow) return null;
 
-  const patch = (p: Partial<ArrowElement>) => updateElement(arrowId, p);
+  const patch = (changes: Partial<ArrowElement>) => updateElement(arrowId, changes);
 
-  return createPortal(
-    <div
-      ref={mergedSetRef}
-      className="editor-panel"
-      style={{ position: "fixed", left: position.x, top: position.y, zIndex: 1000 }}
-      onPointerDown={(e) => e.stopPropagation()}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <div className="flex flex-col gap-3">
-        <div className="panel-row">
-          <div className="w-[110px] flex flex-col">
-            <span className="panel-label">Стиль</span>
-            <select
-              className="u-select"
-              value={arrow.lineStyle}
-              onChange={(e) => patch({ lineStyle: e.target.value as "solid" | "dashed" })}
-            >
-              <option value="solid">Обычный</option>
-              <option value="dashed">Пунктирный</option>
-            </select>
-          </div>
-          <div className="flex-1" />
-          {/* мини-превью */}
-          <svg width="70" height="26" viewBox="0 0 70 26">
-            <line
-              x1="6"
-              y1="13"
-              x2="52"
-              y2="13"
-              stroke={arrow.color}
-              strokeWidth={arrow.thickness === "thin" ? 1.5 : arrow.thickness === "thick" ? 4 : 2.5}
-              strokeDasharray={arrow.lineStyle === "dashed" ? "7 5" : undefined}
-              strokeLinecap="round"
-            />
-            {arrow.head !== "none" && arrow.ends !== "start" && arrow.ends !== "none" && (
-              <polygon points="52,7 62,13 52,19" fill={arrow.color} />
-            )}
-            {arrow.head !== "none" && (arrow.ends === "both" || arrow.ends === "start") && (
-              <polygon points="18,7 8,13 18,19" fill={arrow.color} />
-            )}
-          </svg>
-          <div className="flex flex-col gap-1.5">
-            <button
-              className="btn-warn w-8 h-8 rounded-[6px] flex items-center justify-center"
-              title="Удалить стрелку"
-              onClick={() => {
-                removeElement(arrowId);
-                openPanel(null);
-              }}
-            >
-              <Trash2 size={15} />
-            </button>
-            <button
-              className="btn-check w-8 h-8 rounded-[6px] flex items-center justify-center"
-              title="Готово"
-              onClick={() => openPanel(null)}
-            >
-              <Check size={16} />
-            </button>
-          </div>
-        </div>
-
-        <div className="panel-row">
-          <div className="w-[110px] flex flex-col">
-            <span className="panel-label">Толщина</span>
-            <select
-              className="u-select"
-              value={arrow.thickness}
-              onChange={(e) => patch({ thickness: e.target.value as ArrowThickness })}
-            >
-              <option value="thin">Тонкая</option>
-              <option value="normal">Обычная</option>
-              <option value="thick">Толстая</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="panel-row">
-          <div className="w-[130px] flex flex-col">
-            <span className="panel-label">Кончики стрелки</span>
-            <select
-              className="u-select"
-              value={arrow.head}
-              onChange={(e) => patch({ head: e.target.value as ArrowHead })}
-            >
-              <option value="triangle">Треугольник</option>
-              <option value="line">Стрелка</option>
-              <option value="none">Нет</option>
-            </select>
-          </div>
-          <div className="w-[110px] flex flex-col">
-            <span className="panel-label">Концы</span>
-            <select
-              className="u-select"
-              value={arrow.ends}
-              onChange={(e) => patch({ ends: e.target.value as ArrowEnds })}
-            >
-              <option value="both">Оба конца</option>
-              <option value="end">В конец</option>
-              <option value="start">В начало</option>
-              <option value="none">Без концов</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="panel-row items-center">
-          <span className="panel-label">Цвет</span>
-          <input
-            type="color"
-            value={arrow.color}
-            onChange={(e) => patch({ color: e.target.value })}
-            className="h-7 w-9 rounded border border-[var(--c-stroke)] bg-transparent cursor-pointer"
-          />
-          <input
-            className="u-select flex-1"
-            style={{ padding: "5px 8px" }}
-            value={arrow.color}
-            onChange={(e) => patch({ color: e.target.value })}
-          />
-        </div>
-      </div>
-    </div>,
-    document.body
+  return (
+    <ColorPicker
+      variant="expanded"
+      position={screen}
+      value={arrow.color}
+      lineStyle={arrow.lineStyle}
+      thickness={arrow.thickness}
+      ends={arrow.ends}
+      onChange={(color) => patch({ color })}
+      onLineStyleChange={(lineStyle) => patch({ lineStyle })}
+      onThicknessChange={(thickness) => patch({ thickness })}
+      onEndsChange={(ends) => patch({ ends })}
+      onSave={() => {
+        saveArrowStyleFrom(arrowId);
+        useEditor.getState().openPanel(null);
+      }}
+      onReset={() => {
+        pushHistory();
+        patch({
+          color: DEFAULT_ARROW_COLOR,
+          lineStyle: "solid",
+          thickness: "normal",
+          head: "triangle",
+          ends: "both",
+        });
+      }}
+      onClose={() => openPanel(null)}
+    />
   );
 }
 
