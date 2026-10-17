@@ -1,6 +1,6 @@
 /* Хранилище браузера (IndexedDB) + рабочий файл JSON */
 
-import { get, set } from "idb-keyval";
+import { del, get, set } from "idb-keyval";
 import {
   CanvasElement,
   CanvasSettings,
@@ -36,7 +36,7 @@ export async function loadFromStorage(): Promise<PersistedState | null> {
 }
 
 export async function clearStorage(): Promise<void> {
-  await set(STORAGE_KEY, null);
+  await del(STORAGE_KEY);
 }
 
 /* ------------- Рабочий файл (JSON) ------------- */

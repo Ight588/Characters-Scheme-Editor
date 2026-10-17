@@ -23,6 +23,7 @@ import {
   normalizeView,
   uid,
 } from "./types";
+import { clearStorage } from "./storage";
 
 export type Snapshot = {
   title: string;
@@ -119,6 +120,7 @@ type EditorState = {
   deleteSavedArrowStyle: (styleId: string) => void;
 
   clearCanvas: () => void;
+  clearAllData: () => void;
   loadFromFile: (data: import("./types").PersistedState) => void;
 
   setView: (v: View) => void;
@@ -150,6 +152,12 @@ function toSnapshot(s: EditorState): Snapshot {
   };
 }
 
+function normalizeRotation(value: number | undefined): number {
+  if (!Number.isFinite(value)) return 0;
+  const normalized = Number(value) % 360;
+  return normalized > 180 ? normalized - 360 : normalized <= -180 ? normalized + 360 : normalized;
+}
+
 function normalizeCanvasElement(el: CanvasElement): CanvasElement {
   const base = { ...el, ...normalizePoint(el) } as CanvasElement;
   if (base.kind === "arrow") {
@@ -164,12 +172,18 @@ function normalizeCanvasElement(el: CanvasElement): CanvasElement {
       ...base,
       width: Number.isFinite(base.width) && base.width > 0 ? base.width : 1,
       height: Number.isFinite(base.height) && base.height > 0 ? base.height : 1,
+      rotation: normalizeRotation(base.rotation),
     };
   }
   if (base.kind === "text") {
     return {
       ...base,
       width: Number.isFinite(base.width) && base.width > 0 ? base.width : 220,
+      fontSize:
+        Number.isFinite(base.fontSize) && base.fontSize > 0
+          ? Math.min(240, Math.max(6, base.fontSize))
+          : 14,
+      rotation: normalizeRotation(base.rotation),
     };
   }
   return base;
@@ -354,6 +368,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       src,
       width: Number.isFinite(w) && w > 0 ? w : 1,
       height: Number.isFinite(h) && h > 0 ? h : 1,
+      rotation: 0,
     };
     set((s) => ({
       elements: { ...s.elements, [img.id]: img },
@@ -714,6 +729,32 @@ export const useEditor = create<EditorState>((set, get) => ({
       title: "",
       view: { ...DEFAULT_VIEW },
     });
+  },
+
+  clearAllData: () => {
+    set({
+      hydrated: true,
+      title: "",
+      elements: {},
+      order: [],
+      settings: normalizeCanvasSettings(),
+      savedStatuses: [],
+      savedArrowStyles: [],
+      view: { ...DEFAULT_VIEW },
+      rects: {},
+      selectedId: null,
+      editing: null,
+      menu: null,
+      panel: null,
+      shareOpen: false,
+      clipboard: null,
+      exportMode: null,
+      exportOffset: { x: 0, y: 0 },
+      uiHidden: false,
+      past: [],
+      future: [],
+    });
+    void clearStorage().catch(() => {});
   },
 
   loadFromFile: (data) => {

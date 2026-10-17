@@ -24,7 +24,6 @@ import {
   FileDown,
   Eraser,
   Plus,
-  LocateFixed,
 } from "lucide-react";
 import { useEditor, MenuState } from "@/lib/editor/store";
 import { requestOpenFile } from "@/lib/editor/filepicker";
@@ -62,7 +61,6 @@ export const MenuIcons = {
   share: <FileDown size={15} strokeWidth={1.8} />,
   clear: <Eraser size={15} strokeWidth={1.8} />,
   plus: <Plus size={15} strokeWidth={1.8} />,
-  origin: <LocateFixed size={15} strokeWidth={1.8} />,
 };
 
 /* ---------------------- Контейнер меню ---------------------- */
@@ -204,22 +202,33 @@ function CardsList({ state, items }: { state: MenuState; items: MenuItem[] }) {
   const cards = order
     .map((id) => elements[id])
     .filter((el): el is import("@/lib/editor/types").CardElement => el?.kind === "card");
+  const visibleCards =
+    state.sub === "unlink" && state.elementId
+      ? cards.filter((card) =>
+          Object.values(elements).some(
+            (element) =>
+              element.kind === "arrow" &&
+              ((element.fromCard === state.elementId && element.toCard === card.id) ||
+                (element.toCard === state.elementId && element.fromCard === card.id))
+          )
+        )
+      : cards;
 
   const back = () => openMenu({ ...state, sub: null, subTitle: undefined });
 
   return (
     <div>
       <BackRow title={state.subTitle ?? "Список карточек"} />
-      {cards.length === 0 && (
+      {visibleCards.length === 0 && (
         <div className="px-2 py-3 text-xs opacity-60">Нет других карточек</div>
       )}
-      {cards.map((card, i) => {
+      {visibleCards.map((card, i) => {
         if (state.elementId === card.id && state.sub !== "unlink") return null;
         return (
           <button
             key={card.id}
             className="menu-list-item truncate"
-            style={{ borderBottom: i === cards.length - 1 ? "none" : undefined }}
+            style={{ borderBottom: i === visibleCards.length - 1 ? "none" : undefined }}
             onClick={() => {
               if (!state.elementId) return;
               if (state.sub === "link") linkCards(state.elementId, card.id);

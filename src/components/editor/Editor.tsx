@@ -6,7 +6,13 @@ import React, { useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { useEditor, getPersistedSlice } from "@/lib/editor/store";
-import { loadFromStorage, saveToStorage, parseWorkingFile, readTextFile } from "@/lib/editor/storage";
+import {
+  clearStorage,
+  loadFromStorage,
+  saveToStorage,
+  parseWorkingFile,
+  readTextFile,
+} from "@/lib/editor/storage";
 import { compressToWebp, compressAvatarWebp } from "@/lib/editor/image";
 import { registerFilePicker } from "@/lib/editor/filepicker";
 import { Canvas } from "./Canvas";
@@ -14,6 +20,22 @@ import { Toolbar, RestoreUiButton } from "./Toolbar";
 import { MenusHost } from "./Menus";
 
 const AUTOSAVE_DELAY = 600;
+
+function hasPersistedUserData(data: ReturnType<typeof getPersistedSlice>): boolean {
+  return Boolean(
+    data.title ||
+      data.elements.length ||
+      data.savedStatuses.length ||
+      data.savedArrowStyles.length ||
+      data.settings.bgImage ||
+      data.settings.bgColor !== "#f2eeeb" ||
+      data.settings.bgFit !== "tile" ||
+      data.settings.bgOpacity !== 100 ||
+      data.view.x !== 0 ||
+      data.view.y !== 0 ||
+      data.view.scale !== 1
+  );
+}
 
 export default function Editor() {
   const hydrated = useEditor((s) => s.hydrated);
@@ -51,7 +73,11 @@ export default function Editor() {
       if (!state.hydrated || state.exportMode) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        saveToStorage(getPersistedSlice(useEditor.getState())).catch(() => {});
+        const data = getPersistedSlice(useEditor.getState());
+        const operation = hasPersistedUserData(data)
+          ? saveToStorage(data)
+          : clearStorage();
+        operation.catch(() => {});
       }, AUTOSAVE_DELAY);
     });
     return () => {
