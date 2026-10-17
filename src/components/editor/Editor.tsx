@@ -6,6 +6,7 @@ import React, { useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { useEditor, getPersistedSlice } from "@/lib/editor/store";
+import { DEFAULT_SETTINGS } from "@/lib/editor/types";
 import {
   clearStorage,
   loadFromStorage,
@@ -28,7 +29,7 @@ function hasPersistedUserData(data: ReturnType<typeof getPersistedSlice>): boole
       data.savedStatuses.length ||
       data.savedArrowStyles.length ||
       data.settings.bgImage ||
-      data.settings.bgColor !== "#f2eeeb" ||
+      data.settings.bgColor !== DEFAULT_SETTINGS.bgColor ||
       data.settings.bgFit !== "tile" ||
       data.settings.bgOpacity !== 100 ||
       data.view.x !== 0 ||
@@ -236,8 +237,8 @@ export default function Editor() {
       {exportMode && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[var(--c-viewport-bg)]">
           <div className="text-center">
-            <div className="font-bold text-[18px] text-[var(--c-headings)] mb-2">Сохранение...</div>
-            <div className="text-[13px] opacity-60">Готовим холст к экспорту</div>
+            <div className="export-progress-title">Сохранение...</div>
+            <div className="export-progress-description">Готовим холст к экспорту</div>
           </div>
         </div>
       )}

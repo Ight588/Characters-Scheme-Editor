@@ -1,7 +1,17 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Baseline, Bold, Italic, List, Underline } from "lucide-react";
+import { designPixels } from "@/lib/editor/design";
+import { DEFAULT_TEXT_COLOR } from "@/lib/editor/types";
+import { ColorPicker } from "./ColorPicker";
+
+function commandColorToHex(value: string): string {
+  if (/^#[0-9a-f]{6}$/i.test(value)) return value.toLowerCase();
+  const channels = value.match(/\d+/g)?.slice(0, 3).map(Number);
+  if (!channels || channels.length !== 3) return DEFAULT_TEXT_COLOR;
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
 
 /** Общая панель rich-text форматирования для текста, заголовка и полей карточки. */
 export function TextFormatToolbar({
@@ -16,7 +26,13 @@ export function TextFormatToolbar({
   placement?: "above" | "below";
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const selectedRange = useRef<Range | null>(null);
   const [, force] = React.useReducer((value: number) => value + 1, 0);
+  const [colorPicker, setColorPicker] = useState<{
+    left: number;
+    top: number;
+    value: string;
+  } | null>(null);
 
   useEffect(() => {
     const selectionChanged = () => force();
@@ -24,7 +40,24 @@ export function TextFormatToolbar({
     return () => document.removeEventListener("selectionchange", selectionChanged);
   }, []);
 
+  const restoreSelection = () => {
+    if (!selectedRange.current) return;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(selectedRange.current);
+  };
+
+  const focusSelectionHost = () => {
+    const ancestor = selectedRange.current?.commonAncestorContainer;
+    const element =
+      ancestor instanceof Element ? ancestor : ancestor?.parentElement;
+    const editor = element?.closest<HTMLElement>("[contenteditable='true']");
+    editor?.focus({ preventScroll: true });
+    restoreSelection();
+  };
+
   const command = (name: string, value?: string) => {
+    restoreSelection();
     document.execCommand(name, false, value);
     force();
   };
@@ -38,77 +71,102 @@ export function TextFormatToolbar({
   };
 
   const buttonClass = (active: boolean) =>
-    `w-7 h-7 rounded-[3px] flex items-center justify-center transition-colors ${
-      active ? "bg-[#9a7c5e]/25 text-[#170500]" : "hover:bg-black/5 text-[#0b0a0a]"
-    }`;
+    `text-format-button ${active ? "text-format-button--active" : ""}`;
 
   return (
-    <div
-      ref={ref}
-      data-text-format-toolbar
-      className="editor-menu pointer-events-auto flex items-center gap-1"
-      style={{
-        position,
-        left,
-        top,
-        padding: "4px",
-        zIndex: 50,
-        transform: placement === "above" ? "translateY(-110%)" : undefined,
-      }}
-      onPointerDown={(event) => event.preventDefault()}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <button
-        className={buttonClass(isActive("bold"))}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          command("bold");
+    <>
+      <div
+        ref={ref}
+        data-text-format-toolbar
+        className="editor-menu pointer-events-auto flex items-center gap-[var(--p-4)]"
+        style={{
+          position,
+          left,
+          top,
+          padding: "var(--p-4)",
+          zIndex: 50,
+          transform: placement === "above" ? "translateY(-110%)" : undefined,
         }}
-        title="Жирный"
+        onPointerDown={(event) => event.preventDefault()}
+        onContextMenu={(event) => event.preventDefault()}
       >
-        <Bold size={14} />
-      </button>
-      <button
-        className={buttonClass(isActive("italic"))}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          command("italic");
-        }}
-        title="Курсив"
-      >
-        <Italic size={14} />
-      </button>
-      <button
-        className={buttonClass(isActive("underline"))}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          command("underline");
-        }}
-        title="Подчёркнутый"
-      >
-        <Underline size={14} />
-      </button>
-      <label
-        className={`${buttonClass(isActive("foreColor"))} cursor-pointer relative`}
-        title="Цвет текста"
-      >
-        <Baseline size={14} />
-        <input
-          type="color"
-          className="absolute inset-0 opacity-0 cursor-pointer"
-          onChange={(event) => command("foreColor", event.target.value)}
+        <button
+          className={buttonClass(isActive("bold"))}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            command("bold");
+          }}
+          title="Жирный"
+        >
+          <Bold aria-hidden />
+        </button>
+        <button
+          className={buttonClass(isActive("italic"))}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            command("italic");
+          }}
+          title="Курсив"
+        >
+          <Italic aria-hidden />
+        </button>
+        <button
+          className={buttonClass(isActive("underline"))}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            command("underline");
+          }}
+          title="Подчёркнутый"
+        >
+          <Underline aria-hidden />
+        </button>
+        <button
+          className={buttonClass(isActive("foreColor"))}
+          title="Цвет текста"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const selection = window.getSelection();
+            selectedRange.current = selection?.rangeCount
+              ? selection.getRangeAt(0).cloneRange()
+              : null;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setColorPicker({
+              left: bounds.left,
+              top: bounds.bottom + designPixels("--p-8"),
+              value: commandColorToHex(String(document.queryCommandValue("foreColor"))),
+            });
+          }}
+        >
+          <Baseline aria-hidden />
+        </button>
+        <button
+          className={buttonClass(isActive("insertUnorderedList"))}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            command("insertUnorderedList");
+          }}
+          title="Список"
+        >
+          <List aria-hidden />
+        </button>
+      </div>
+
+      {colorPicker && (
+        <ColorPicker
+          variant="compact"
+          position={{ x: colorPicker.left, y: colorPicker.top }}
+          value={colorPicker.value}
+          onChange={(value) => {
+            setColorPicker((current) => (current ? { ...current, value } : current));
+            command("foreColor", value);
+          }}
+          onClose={() => {
+            setColorPicker(null);
+            focusSelectionHost();
+          }}
         />
-      </label>
-      <button
-        className={buttonClass(isActive("insertUnorderedList"))}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          command("insertUnorderedList");
-        }}
-        title="Список"
-      >
-        <List size={14} />
-      </button>
-    </div>
+      )}
+    </>
   );
 }

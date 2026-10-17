@@ -5,6 +5,7 @@
 import React, { useEffect, useRef } from "react";
 import { Undo2, Redo2, Plus, CreditCard, Settings, LocateFixed } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
+import { designPixels } from "@/lib/editor/design";
 import { TextFormatToolbar } from "./TextFormatToolbar";
 
 function titleHasText(html: string): boolean {
@@ -67,7 +68,7 @@ export function Toolbar() {
     const world = { x: -view.x / view.scale, y: -view.y / view.scale };
     openMenu({
       type: "canvas",
-      screen: { x: btn.left, y: btn.bottom + 8 },
+      screen: { x: btn.left, y: btn.bottom + designPixels("--p-8") },
       world,
       sub: null,
     });
@@ -77,16 +78,16 @@ export function Toolbar() {
     const btn = (e.currentTarget as HTMLElement).getBoundingClientRect();
     openMenu({
       type: "settings",
-      screen: { x: btn.right, y: btn.bottom + 8 },
+      screen: { x: btn.right, y: btn.bottom + designPixels("--p-8") },
       world: { x: 0, y: 0 },
       sub: null,
     });
   };
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-40 flex flex-col items-stretch justify-between gap-0 no-select pointer-events-none p-4 sm:flex-row sm:flex-wrap sm:items-start sm:gap-2 sm:p-5 md:p-6">
+    <div className="absolute top-0 left-0 right-0 z-40 flex flex-col items-center justify-between gap-0 no-select pointer-events-none p-[var(--p-16)] sm:flex-row sm:flex-wrap sm:items-start sm:gap-[var(--p-8)] sm:p-[var(--p-20)] md:p-[var(--p-24)]">
       {/* Заголовок: на мобильных занимает всю ширину под кнопками */}
-      <div className="order-2 mt-6 w-full min-w-0 flex-none pointer-events-auto sm:order-1 sm:mt-0 sm:w-auto sm:flex-1 sm:basis-[240px] sm:pr-[32px]">
+      <div className="order-2 mt-[var(--p-24)] w-full min-w-0 flex-none pointer-events-auto text-center sm:order-1 sm:mt-0 sm:w-auto sm:flex-1 sm:basis-[calc(var(--cards-dec-width)-var(--comp-pad-hor)*2)] sm:pr-[calc(var(--comp-pad-hor)+var(--cards-rel-stroke))] sm:text-left">
         {isEditingTitle ? (
           <div
             key="title-editor"
@@ -94,9 +95,13 @@ export function Toolbar() {
             data-title-editor
             contentEditable
             suppressContentEditableWarning
-            className="editable-active w-full max-w-full break-words border-b-2 border-[#9a7c5e]/60 pb-1 font-bold text-[19px] leading-tight text-[var(--c-headings)] sm:w-fit sm:text-[22px]"
+            className="editor-title editable-active w-full sm:text-[calc(var(--cards-age)+var(--p-12))] max-w-full break-words text-center sm:w-fit sm:text-left"
             style={{ minWidth: titleEditMinWidth ?? undefined }}
-            onBlur={commitTitle}
+            onBlur={(event) => {
+              const next = event.relatedTarget as Element | null;
+              if (next?.closest("[data-text-format-toolbar]")) return;
+              commitTitle();
+            }}
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === "Enter") {
@@ -115,13 +120,15 @@ export function Toolbar() {
             key="title-display"
             ref={titleRef}
             data-title-display
-            className="editable-hover w-full max-w-full break-words border-b-2 border-[#9a7c5e]/60 pb-1 font-bold text-[19px] leading-tight text-[var(--c-headings)] sm:w-fit sm:text-[22px]"
+            className="editor-title editable-hover w-full sm:text-[calc(var(--cards-age)+var(--p-12))] max-w-full break-words text-center sm:w-fit sm:text-left"
             title="Дважды нажмите, чтобы редактировать"
             onDoubleClick={() => {
               const bounds = titleRef.current?.getBoundingClientRect();
               setTitleEditMinWidth(bounds?.width ?? null);
               setTitleToolbarPosition(
-                bounds ? { left: bounds.left, top: bounds.bottom + 8 } : null
+                bounds
+                  ? { left: bounds.left, top: bounds.bottom + designPixels("--p-8") }
+                  : null
               );
               setEditing({ id: "__title__", field: "title" });
             }}
@@ -147,53 +154,53 @@ export function Toolbar() {
       {/* Кнопки */}
       <div
         aria-hidden={uiHidden}
-        className={`order-1 ml-auto flex w-full max-w-full flex-row flex-wrap items-center justify-end gap-1.5 sm:order-2 sm:w-auto sm:gap-2 ${
+        className={`order-1 mx-auto flex w-full max-w-full flex-row flex-wrap items-center justify-center gap-[var(--p-6)] sm:order-2 sm:ml-auto sm:mr-0 sm:w-auto sm:justify-end sm:gap-[var(--p-8)] ${
           uiHidden ? "invisible pointer-events-none" : "pointer-events-auto"
         }`}
       >
         <button
-          className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
+          className="btn-gen toolbar-button sm:h-[calc(var(--comp-pad-vert)*2)] sm:w-[calc(var(--comp-pad-vert)*2)]"
           title="Отменить (Ctrl+Z)"
           onClick={undo}
           disabled={past === 0}
         >
-          <Undo2 size={17} />
+          <Undo2 />
         </button>
         <button
-          className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
+          className="btn-gen toolbar-button sm:h-[calc(var(--comp-pad-vert)*2)] sm:w-[calc(var(--comp-pad-vert)*2)]"
           title="Вернуть (Ctrl+Shift+Z)"
           onClick={redo}
           disabled={future === 0}
         >
-          <Redo2 size={17} />
+          <Redo2 />
         </button>
         <button
-          className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
+          className="btn-gen toolbar-button sm:h-[calc(var(--comp-pad-vert)*2)] sm:w-[calc(var(--comp-pad-vert)*2)]"
           title="Вернуться к началу координат"
           onClick={resetView}
         >
-          <LocateFixed size={17} />
+          <LocateFixed />
         </button>
         <button
-          className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
+          className="btn-gen toolbar-button sm:h-[calc(var(--comp-pad-vert)*2)] sm:w-[calc(var(--comp-pad-vert)*2)]"
           title="Добавить элемент"
           onClick={openAddMenu}
         >
-          <Plus size={19} />
+          <Plus />
         </button>
         <button
-          className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
+          className="btn-gen toolbar-button sm:h-[calc(var(--comp-pad-vert)*2)] sm:w-[calc(var(--comp-pad-vert)*2)]"
           title="Скрыть интерфейс"
           onClick={toggleUiHidden}
         >
-          <CreditCard size={17} />
+          <CreditCard />
         </button>
         <button
-          className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
+          className="btn-gen toolbar-button sm:h-[calc(var(--comp-pad-vert)*2)] sm:w-[calc(var(--comp-pad-vert)*2)]"
           title="Настройки"
           onClick={openSettingsMenu}
         >
-          <Settings size={17} />
+          <Settings />
         </button>
       </div>
     </div>
@@ -207,12 +214,12 @@ export function RestoreUiButton() {
   if (!uiHidden) return null;
   return (
     <button
-      className="btn-gen absolute z-40 w-9 h-9 rounded-[8px] flex items-center justify-center opacity-30 hover:opacity-100 transition-opacity"
+      className="btn-gen restore-ui-button"
       style={{ top: "var(--p-20)", right: "var(--p-24)" }}
       title="Показать интерфейс"
       onClick={toggleUiHidden}
     >
-      <CreditCard size={17} />
+      <CreditCard />
     </button>
   );
 }

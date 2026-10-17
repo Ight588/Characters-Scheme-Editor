@@ -331,7 +331,7 @@ export function ClearAllDataDialog() {
   return (
     <div
       data-clear-all-dialog
-      className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/30 p-4"
+      className="dialog-backdrop dialog-backdrop--strong"
       onPointerDown={() => setOpen(false)}
     >
       <div
@@ -339,29 +339,28 @@ export function ClearAllDataDialog() {
         aria-modal="true"
         aria-labelledby="clear-all-title"
         aria-describedby="clear-all-description"
-        className="export-dialog w-full max-w-[390px] no-select"
-        style={{ padding: "var(--p-20)" }}
+        className="export-dialog clear-data-dialog no-select"
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <h2 id="clear-all-title" className="mb-3 text-[16px] font-bold text-[var(--c-headings)]">
+        <h2 id="clear-all-title" className="dialog-title">
           Удалить все данные?
         </h2>
-        <p id="clear-all-description" className="mb-5 text-[13px] leading-[1.45] text-[#AE1010]">
+        <p id="clear-all-description" className="dialog-warning">
           Это действие необратимо. Будут удалены все элементы холста, заголовок, фон,
           сохранённые статусы и стили, история действий и локальные данные.
         </p>
-        <div className="flex justify-end gap-2">
+        <div className="dialog-actions">
           <button
             type="button"
             autoFocus
-            className="h-8 rounded-[5px] px-3 text-[12px] text-[var(--c-cards-labels)] hover:bg-black/5"
+            className="dialog-button"
             onClick={() => setOpen(false)}
           >
             Отмена
           </button>
           <button
             type="button"
-            className="btn-warn h-8 rounded-[5px] px-3 text-[12px] font-semibold text-[#AE1010]"
+            className="btn-warn dialog-button dialog-button--warn"
             onClick={() => {
               clearAllData();
               toast.success("Все данные удалены");
@@ -406,18 +405,17 @@ export function ShareDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/25"
+      className="dialog-backdrop"
       onPointerDown={() => setShareOpen(false)}
     >
       <div
-        className="export-dialog w-[380px] no-select"
-        style={{ padding: "var(--p-20)" }}
+        className="export-dialog share-dialog no-select"
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-[16px] text-[var(--c-headings)]">Поделиться холстом</h2>
+        <div className="dialog-header">
+          <h2 className="dialog-title">Поделиться холстом</h2>
           <button
-            className="w-7 h-7 rounded-[4px] hover:bg-black/5 text-lg leading-none"
+            className="dialog-close"
             onClick={() => setShareOpen(false)}
             title="Закрыть"
           >
@@ -425,8 +423,8 @@ export function ShareDialog() {
           </button>
         </div>
 
-        <div className="text-[13px] mb-1 font-semibold">Режим</div>
-        <div className="flex flex-col gap-1 mb-4">
+        <div className="dialog-section-title">Режим</div>
+        <div className="flex flex-col gap-[var(--p-4)] mb-[var(--p-16)]">
           <label className="menu-item cursor-pointer">
             <input
               type="radio"
@@ -447,22 +445,22 @@ export function ShareDialog() {
           </label>
         </div>
 
-        <div className="text-[13px] mb-1 font-semibold">Формат</div>
-        <div className="flex flex-col gap-1">
+        <div className="dialog-section-title">Формат</div>
+        <div className="flex flex-col gap-[var(--p-4)]">
           <button className="menu-item" onClick={() => run("png")} disabled={busy !== null}>
             {MenuIcons.image}
             <span className="flex-1 text-left">Изображение (PNG)</span>
-            {busy === "png" && <span className="text-xs opacity-60">сохранение…</span>}
+            {busy === "png" && <span className="dialog-progress">сохранение…</span>}
           </button>
           <button className="menu-item" onClick={() => run("pdf")} disabled={busy !== null}>
             {MenuIcons.share}
             <span className="flex-1 text-left">Документ (PDF)</span>
-            {busy === "pdf" && <span className="text-xs opacity-60">сохранение…</span>}
+            {busy === "pdf" && <span className="dialog-progress">сохранение…</span>}
           </button>
           <button className="menu-item" onClick={() => run("json")} disabled={busy !== null}>
             {MenuIcons.save}
             <span className="flex-1 text-left">Рабочий файл (JSON)</span>
-            {busy === "json" && <span className="text-xs opacity-60">сохранение…</span>}
+            {busy === "json" && <span className="dialog-progress">сохранение…</span>}
           </button>
         </div>
       </div>

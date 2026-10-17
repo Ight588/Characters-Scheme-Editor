@@ -16,8 +16,12 @@ import { ArrowLayer } from "./elements/ArrowLayer";
 import { ImageView } from "./elements/ImageElement";
 import { TextView } from "./elements/TextElement";
 import { contentBBox, computeArrowGeometries } from "@/lib/editor/geometry";
-
-const EXPORT_PAD = 40;
+import { designPixels } from "@/lib/editor/design";
+import {
+  DOUBLE_TAP_DELAY_MS,
+  DOUBLE_TAP_DISTANCE,
+  TAP_MOVE_TOLERANCE,
+} from "@/lib/editor/interactions";
 
 const BG_REPEAT: Record<BgImageFit, string> = {
   tile: "repeat",
@@ -51,7 +55,23 @@ export function Canvas() {
     start: { x: number; y: number };
     timer: number;
   } | null>(null);
+  const tapCandidates = useRef(
+    new Map<
+      number,
+      {
+        target: Element;
+        targetKey: string;
+        start: { x: number; y: number };
+      }
+    >()
+  );
+  const lastTap = useRef<{
+    targetKey: string;
+    screen: { x: number; y: number };
+    at: number;
+  } | null>(null);
   const suppressClickUntil = useRef(0);
+  const suppressDoubleClickUntil = useRef(0);
 
   const interactive = !exportMode;
 
@@ -85,6 +105,22 @@ export function Canvas() {
         y: (first.y + second.y) / 2,
       },
     };
+  };
+
+  const contextTargetKey = (target: Element): string => {
+    const statusId = target
+      .closest("[data-status-card-id]")
+      ?.getAttribute("data-status-card-id");
+    if (statusId) return `status:${statusId}`;
+
+    const arrowTarget = target.closest("[data-arrow-id], [data-arrow-description]");
+    const arrowId =
+      arrowTarget?.getAttribute("data-arrow-id") ??
+      arrowTarget?.getAttribute("data-arrow-description");
+    if (arrowId) return `arrow:${arrowId}`;
+
+    const elementId = target.closest("[data-element-id]")?.getAttribute("data-element-id");
+    return elementId ? `element:${elementId}` : "canvas";
   };
 
   const openTouchContextMenu = (target: Element, clientX: number, clientY: number) => {
@@ -145,8 +181,24 @@ export function Canvas() {
     if (!interactive || event.pointerType !== "touch") return;
     touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
+    const target = event.target as Element;
+    const blockedTarget = target.closest(
+      "[data-transform-handle], [data-text-format-toolbar], input, textarea, select, button"
+    );
+    if (!blockedTarget) {
+      tapCandidates.current.set(event.pointerId, {
+        target,
+        targetKey: contextTargetKey(target),
+        start: { x: event.clientX, y: event.clientY },
+      });
+    } else {
+      lastTap.current = null;
+    }
+
     if (touchPoints.current.size > 1) {
       cancelLongPress();
+      tapCandidates.current.clear();
+      lastTap.current = null;
       touchGestureConsumed.current = true;
       pinchState.current = touchMetrics();
       event.preventDefault();
@@ -154,12 +206,9 @@ export function Canvas() {
       return;
     }
 
-    const target = event.target as Element;
-    if (
-      target.closest(
-        "[data-transform-handle], [data-text-format-toolbar], [contenteditable='true'], input, textarea, select, button"
-      )
-    ) return;
+    // Внутри активного редактора дабл-тап остаётся доступен, но лонг-тап
+    // не перехватывает выделение текста.
+    if (blockedTarget || target.closest("[contenteditable='true']")) return;
 
     cancelLongPress();
     const pointerId = event.pointerId;
@@ -167,7 +216,10 @@ export function Canvas() {
     const timer = window.setTimeout(() => {
       if (longPress.current?.pointerId !== pointerId || touchGestureConsumed.current) return;
       longPress.current = null;
+      tapCandidates.current.delete(pointerId);
+      lastTap.current = null;
       suppressClickUntil.current = Date.now() + 900;
+      suppressDoubleClickUntil.current = Date.now() + 900;
       navigator.vibrate?.(10);
       openTouchContextMenu(target, start.x, start.y);
     }, 550);
@@ -177,6 +229,16 @@ export function Canvas() {
   const onPointerMoveCapture = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch" || !touchPoints.current.has(event.pointerId)) return;
     touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const tap = tapCandidates.current.get(event.pointerId);
+    if (
+      tap &&
+      Math.hypot(event.clientX - tap.start.x, event.clientY - tap.start.y) >
+        TAP_MOVE_TOLERANCE
+    ) {
+      tapCandidates.current.delete(event.pointerId);
+      lastTap.current = null;
+    }
 
     const metrics = touchMetrics();
     if (pinchState.current && metrics) {
@@ -217,9 +279,43 @@ export function Canvas() {
     }
   };
 
-  const finishTouchPointer = (event: React.PointerEvent) => {
+  const finishTouchPointer = (event: React.PointerEvent, cancelled = false) => {
     if (event.pointerType !== "touch") return;
     if (longPress.current?.pointerId === event.pointerId) cancelLongPress();
+
+    const candidate = tapCandidates.current.get(event.pointerId);
+    tapCandidates.current.delete(event.pointerId);
+    if (cancelled) lastTap.current = null;
+    if (!cancelled && candidate && !touchGestureConsumed.current) {
+      const now = Date.now();
+      const previous = lastTap.current;
+      const isDoubleTap =
+        previous?.targetKey === candidate.targetKey &&
+        now - previous.at <= DOUBLE_TAP_DELAY_MS &&
+        Math.hypot(
+          event.clientX - previous.screen.x,
+          event.clientY - previous.screen.y
+        ) <= DOUBLE_TAP_DISTANCE;
+
+      if (isDoubleTap) {
+        lastTap.current = null;
+        suppressClickUntil.current = now + 900;
+        suppressDoubleClickUntil.current = now + 900;
+        const active = document.activeElement as HTMLElement | null;
+        if (active?.isContentEditable) active.blur();
+        useEditor.getState().setEditing(null);
+        openTouchContextMenu(candidate.target, event.clientX, event.clientY);
+        event.preventDefault();
+        event.stopPropagation();
+      } else {
+        lastTap.current = {
+          targetKey: candidate.targetKey,
+          screen: { x: event.clientX, y: event.clientY },
+          at: now,
+        };
+      }
+    }
+
     touchPoints.current.delete(event.pointerId);
     const metrics = touchMetrics();
     pinchState.current = metrics;
@@ -325,11 +421,16 @@ export function Canvas() {
       }}
       onPointerDownCapture={onPointerDownCapture}
       onPointerMoveCapture={onPointerMoveCapture}
-      onPointerUpCapture={finishTouchPointer}
-      onPointerCancelCapture={finishTouchPointer}
+      onPointerUpCapture={(event) => finishTouchPointer(event)}
+      onPointerCancelCapture={(event) => finishTouchPointer(event, true)}
       onClickCapture={(event) => {
         if (Date.now() >= suppressClickUntil.current) return;
         suppressClickUntil.current = 0;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onDoubleClickCapture={(event) => {
+        if (Date.now() >= suppressDoubleClickUntil.current) return;
         event.preventDefault();
         event.stopPropagation();
       }}
@@ -383,7 +484,7 @@ export function Canvas() {
 
       {isEmpty && interactive && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center font-bold text-[22px] leading-snug text-[#b3a89f] no-select">
+          <div className="empty-canvas-hint no-select">
             <span className="hidden sm:inline">
               Нажмите правую кнопку мыши,
               <br />
@@ -408,10 +509,11 @@ function exportBackgroundRect(
 ): React.CSSProperties {
   const geometries = computeArrowGeometries(elements, rects);
   const bbox = contentBBox(elements, rects, geometries);
+  const exportPadding = designPixels("--p-20") * 2;
   return {
-    left: bbox.x - EXPORT_PAD,
-    top: bbox.y - EXPORT_PAD,
-    width: Math.ceil(bbox.w) + EXPORT_PAD * 2,
-    height: Math.ceil(bbox.h) + EXPORT_PAD * 2,
+    left: bbox.x - exportPadding,
+    top: bbox.y - exportPadding,
+    width: Math.ceil(bbox.w) + exportPadding * 2,
+    height: Math.ceil(bbox.h) + exportPadding * 2,
   };
 }

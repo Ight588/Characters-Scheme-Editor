@@ -5,12 +5,13 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { useEditor } from "@/lib/editor/store";
 import {
-  ARROW_THICKNESS_PX,
   ArrowElement,
   ArrowHead,
+  ArrowThickness,
   CardElement,
   Point,
 } from "@/lib/editor/types";
+import { designPixels } from "@/lib/editor/design";
 import {
   computeArrowGeometries,
   distToRect,
@@ -20,6 +21,14 @@ import {
 } from "@/lib/editor/geometry";
 import { EditableText } from "../EditableText";
 import { useElementDrag } from "./CardElement";
+
+function arrowThickness(thickness: ArrowThickness): number {
+  const relationStroke = designPixels("--cards-rel-stroke");
+  const menuStroke = designPixels("--menus-stroke");
+  if (thickness === "thin") return relationStroke * 0.75;
+  if (thickness === "thick") return relationStroke * 2 + menuStroke / 2;
+  return relationStroke + menuStroke / 2;
+}
 
 function headPolygons(
   tip: Point,
@@ -48,7 +57,7 @@ function headPolygons(
         points={`${p1} ${tip.x},${tip.y} ${p2}`}
         fill="none"
         stroke={color}
-        strokeWidth={Math.max(1.6, size * 0.28)}
+        strokeWidth={Math.max(designPixels("--cards-rel-stroke"), size * 0.28)}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -65,7 +74,7 @@ function shaftInset(head: ArrowHead, headSize: number, width: number): number {
   }
   if (head === "line") {
     // Убираем стержень из вершины открытого наконечника, сохраняя визуальное соединение.
-    return Math.max(2, width * 1.25);
+    return Math.max(designPixels("--cards-rel-stroke"), width * 1.25);
   }
   return 0;
 }
@@ -121,9 +130,9 @@ function ArrowShape({
   const { onPointerDown } = useElementDrag("arrow-body");
   const outlined = selected || groupSelected;
 
-  const width = ARROW_THICKNESS_PX[arrow.thickness];
+  const width = arrowThickness(arrow.thickness);
   const dashed = arrow.lineStyle === "dashed";
-  const headSize = width * 3.4 + 4;
+  const headSize = width * 3.4 + designPixels("--p-4");
 
   const showStart = arrow.ends === "both" || arrow.ends === "start";
   const showEnd = arrow.ends === "both" || arrow.ends === "end";
@@ -194,7 +203,7 @@ function ArrowShape({
       const world = worldFromEvent(ev);
       const state = useEditor.getState();
       let bestId: string | null = null;
-      let bestDist = 28;
+      let bestDist = designPixels("--p-24") + designPixels("--p-4");
       for (const el of Object.values(state.elements)) {
         if (el.kind !== "card") continue;
         const dist = distToRect(world, getCardRect(el as CardElement, state.rects));
@@ -223,7 +232,10 @@ function ArrowShape({
       <path
         d={hitPath}
         stroke="transparent"
-        strokeWidth={Math.max(16, width + 12)}
+        strokeWidth={Math.max(
+          designPixels("--p-16"),
+          width + designPixels("--p-12")
+        )}
         fill="none"
         style={{ pointerEvents: interactive ? "stroke" : "none", cursor: "pointer" }}
         onPointerDown={beginBodyDrag}
@@ -256,7 +268,7 @@ function ArrowShape({
           <circle
             cx={from.x}
             cy={from.y}
-            r={6}
+            r={designPixels("--p-6")}
             className="arrow-handle"
             style={{ cursor: "grab" }}
             onPointerDown={(e) => beginEndDrag(e, "from")}
@@ -264,7 +276,7 @@ function ArrowShape({
           <circle
             cx={to.x}
             cy={to.y}
-            r={6}
+            r={designPixels("--p-6")}
             className="arrow-handle"
             style={{ cursor: "grab" }}
             onPointerDown={(e) => beginEndDrag(e, "to")}
@@ -305,10 +317,21 @@ function ArrowDescription({
 
   if (!visible) return null;
 
+  const maxWidth =
+    designPixels("--cards-dec-width") -
+    designPixels("--comp-pad-hor") * 2 -
+    designPixels("--comp-pad-vert");
   const fallbackWidth = arrow.label
-    ? Math.min(220, Math.max(24, arrow.label.length * 6))
-    : 80;
-  const bounds = getArrowDescriptionRect(from, to, measured ?? { w: fallbackWidth, h: 12 });
+    ? Math.min(
+        maxWidth,
+        Math.max(designPixels("--p-24"), arrow.label.length * designPixels("--p-6"))
+      )
+    : designPixels("--comp-pad-hor") * 2 + designPixels("--comp-pad-vert");
+  const bounds = getArrowDescriptionRect(
+    from,
+    to,
+    measured ?? { w: fallbackWidth, h: designPixels("--p-12") }
+  );
   const rotation = getArrowDescriptionRotation(from, to);
 
   return (
@@ -316,17 +339,19 @@ function ArrowDescription({
       ref={ref}
       data-arrow-description={arrow.id}
       data-arrow-description-rotation={rotation}
-      className="absolute font-bold"
+      className="absolute font-[var(--font-weight-bold-small)]"
       style={{
         left: bounds.x + bounds.w / 2,
         top: bounds.y + bounds.h / 2,
         transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
         transformOrigin: "center",
         width: "max-content",
-        minWidth: isEditing ? 80 : undefined,
-        maxWidth: 220,
-        fontSize: 10,
-        lineHeight: "12px",
+        minWidth: isEditing
+          ? designPixels("--comp-pad-hor") * 2 + designPixels("--comp-pad-vert")
+          : undefined,
+        maxWidth,
+        fontSize: "var(--cards-age)",
+        lineHeight: "var(--p-12)",
         pointerEvents: interactive ? "auto" : "none",
       }}
       onPointerDown={(event) => {
@@ -359,8 +384,10 @@ function ArrowDescription({
         style={{
           color: arrow.color,
           display: "inline-block",
-          minWidth: isEditing ? 80 : undefined,
-          maxWidth: 220,
+          minWidth: isEditing
+            ? designPixels("--comp-pad-hor") * 2 + designPixels("--comp-pad-vert")
+            : undefined,
+          maxWidth,
           wordBreak: "break-word",
         }}
       />

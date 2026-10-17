@@ -1,0 +1,57 @@
+/*
+ * Единственный источник дизайн-переменных интерфейса.
+ * Названия и исходные значения соответствуют приложенному variables.json.
+ */
+:root {
+  /* Color */
+  --c-stroke: #b2b2b2; /* Components Stroke */
+  --c-headings: #170500; /* Colors/Headings */
+  /* В экспорте Figma у Colors/Hover было невалидное #NaNNaNNaNNaN. */
+  --c-hover: color-mix(in srgb, var(--btn-gen) 14%, transparent); /* Colors/Hover */
+  --c-menus-bg: #f9f7f6; /* Colors/Menus BG */
+  --c-viewport-bg: #f2eeeb; /* Colors/Viewport BG */
+  --btn-check: #c6fd9d; /* Colors/Button/Check/Default */
+  --btn-check-hover: #94e25a; /* Colors/Button/Check/Hover */
+  --btn-check-label: #15880ab2; /* Colors/Button/Check/Label Button */
+  --btn-check-pressed: #28c328; /* Colors/Button/Check/Pressed */
+  --btn-gen: #9a7c5e; /* Colors/Button/Gen/Gen */
+  --btn-gen-hover: #805a34; /* Colors/Button/Gen/Hover */
+  --btn-gen-label: #f9f4ef; /* Colors/Button/Gen/Label Button */
+  --btn-gen-pressed: #684119; /* Colors/Button/Gen/Pressed */
+  --btn-warn: #f3aaaa; /* Colors/Button/Warn/Default */
+  --btn-warn-hover: #e56e6e; /* Colors/Button/Warn/Hover */
+  --btn-warn-label: #ae1010b2; /* Colors/Button/Warn/Label Button */
+  --btn-warn-text: #ae1010; /* Colors/Button/Warn/Label Text */
+  --btn-warn-pressed: #cc4545; /* Colors/Button/Warn/Pressed */
+  --c-cards-bg: #fafafa; /* Colors/Cards/BG */
+  --c-cards-labels: #0b0a0a; /* Colors/Cards/Labels */
+  --c-cards-text: #161414; /* Colors/Cards/Main Text */
+
+  /* Number */
+  --cards-rel-stroke: 2px; /* Cards/Rel Stroke */
+  --cards-age: 10px; /* Cards/Age */
+  --cards-dec-width: 300px; /* Colors/Cards/DecWidth */
+  --comp-pad-vert: 20px; /* Components/Padding Vert */
+  --comp-pad-hor: 30px; /* Components/Padding Hor */
+  --menus-stroke: 1px; /* Menus/Stroke */
+  --menus-radius: 3px; /* Menus/Radius */
+  --menus-padding: 6px; /* Menus/Padding */
+  --p-4: 4px; /* Paddings/4 */
+  --p-6: 6px; /* Paddings/6 */
+  --p-8: 8px; /* Paddings/8 */
+  --p-12: 12px; /* Paddings/12 */
+  --p-16: 16px; /* Paddings/16 */
+  --p-20: 20px; /* Paddings/20 */
+  --p-24: 24px; /* Paddings/24 */
+
+  /* String */
+  --font-main: Inter, sans-serif; /* Font/Main */
+  --font-cards-label: var(--font-main); /* Cards/Label → Font/Main */
+  --font-cards-main: var(--font-main); /* Cards/Main → Font/Main */
+  --font-cards-misc: var(--font-main); /* Cards/Misc → Font/Main */
+  --font-menus: var(--font-main); /* Font/Menus → Font/Main */
+  --font-rels: var(--font-main); /* Font/Rels → Font/Main */
+  --font-tree-label: var(--font-main); /* Font/Tree Label → Font/Main */
+  --font-weight-bold-small: 600; /* Font Weight/Bold Small → Semi Bold */
+  --font-weight-light: 400; /* Font Weight/Light → Regular */
+}

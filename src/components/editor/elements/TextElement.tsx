@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { useEditor } from "@/lib/editor/store";
+import { designPixels } from "@/lib/editor/design";
 import { TextElement } from "@/lib/editor/types";
 import { TextFormatToolbar } from "../TextFormatToolbar";
 import { useElementDrag } from "./CardElement";
@@ -109,7 +110,7 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
       distance: Math.max(1, Math.hypot(event.clientX - centerX, event.clientY - centerY)),
       x: text.x,
       y: text.y,
-      width: text.width,
+      width: ref.current.offsetWidth,
       height: ref.current.offsetHeight,
       fontSize: text.fontSize,
       pushed: false,
@@ -134,7 +135,10 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
         moveEvent.clientX - state.centerX,
         moveEvent.clientY - state.centerY
       );
-      const minScale = Math.max(40 / state.width, 6 / state.fontSize);
+      const minScale = Math.max(
+        (designPixels("--p-20") * 2) / state.width,
+        designPixels("--p-6") / state.fontSize
+      );
       const scale = Math.max(minScale, currentDistance / state.distance);
       const width = state.width * scale;
       const height = state.height * scale;
@@ -170,11 +174,13 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
         data-selected={selected || undefined}
         className={`absolute top-0 left-0 no-select ${
           outlined && interactiveElement && !isEditing
-            ? "outline outline-[1.5px] outline-[#9a7c5e]/50 rounded-[3px]"
+            ? "element-selection-outline text-selection-outline"
             : ""
         }`}
         style={{
-          width: text.width,
+          width: "max-content",
+          maxWidth: text.width,
+          minWidth: isEditing ? "var(--p-24)" : undefined,
           transform: `translate(${text.x}px, ${text.y}px) rotate(${text.rotation}deg)`,
           transformOrigin: "center",
           color: text.color,
@@ -218,9 +224,13 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
             ref={editRef}
             contentEditable
             suppressContentEditableWarning
-            className="editable-active leading-[1.45] min-h-[1.4em]"
+            className="canvas-text-content editable-active"
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-            onBlur={commit}
+            onBlur={(event) => {
+              const next = event.relatedTarget as Element | null;
+              if (next?.closest("[data-text-format-toolbar]")) return;
+              commit();
+            }}
             onKeyDown={(event) => {
               event.stopPropagation();
               if (event.key === "Escape") setEditing(null);
@@ -230,7 +240,7 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
           />
         ) : (
           <div
-            className="leading-[1.45] min-h-[1.4em]"
+            className="canvas-text-content"
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
             dangerouslySetInnerHTML={{ __html: text.html }}
           />
@@ -240,16 +250,16 @@ export function TextView({ text, interactive }: { text: TextElement; interactive
           <>
             <div
               data-transform-handle="rotate"
-              className="absolute left-1/2 -top-8 flex h-8 w-5 -translate-x-1/2 cursor-grab flex-col items-center active:cursor-grabbing"
+              className="transform-rotate"
               title="Повернуть текст"
               onPointerDown={beginRotate}
             >
-              <span className="h-4 w-px bg-[#9a7c5e]" />
-              <span className="h-4 w-4 rounded-full border-2 border-[#9a7c5e] bg-[var(--c-menus-bg)]" />
+              <span className="transform-stem" />
+              <span className="transform-knob" />
             </div>
             <div
               data-transform-handle="resize"
-              className="absolute -right-1.5 -bottom-1.5 h-4 w-4 cursor-nwse-resize rounded-full border-2 border-[#9a7c5e] bg-[var(--c-menus-bg)]"
+              className="transform-resize"
               title="Масштабировать текст"
               onPointerDown={beginResize}
             />
