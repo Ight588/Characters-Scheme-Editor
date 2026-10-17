@@ -321,66 +321,6 @@ function StylesList({ state }: { state: MenuState }) {
   );
 }
 
-/* ------------- Панель выбора цвета (сокр. версия) ------------- */
-
-export function ColorPicker({
-  value,
-  onChange,
-  onClose,
-  palette,
-  position,
-  title = "Выбор цвета",
-}: {
-  value: string;
-  onChange: (c: string) => void;
-  onClose: () => void;
-  palette: string[];
-  position: { x: number; y: number };
-  title?: string;
-}) {
-  const ref = useOutsideClose(onClose);
-  return createPortal(
-    <div
-      ref={ref}
-      className="editor-menu"
-      style={{ position: "fixed", left: position.x, top: position.y, zIndex: 1001, width: 230 }}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <div className="panel-label mb-2">{title}</div>
-      <div className="grid grid-cols-5 gap-2 mb-2">
-        {palette.map((c) => (
-          <button
-            key={c}
-            className={`h-7 rounded border ${value.toLowerCase() === c.toLowerCase() ? "ring-2 ring-offset-1 ring-[#9a7c5e]" : ""}`}
-            style={{ background: c, borderColor: "var(--c-stroke)" }}
-            onClick={() => {
-              onChange(c);
-              onClose();
-            }}
-            title={c}
-          />
-        ))}
-      </div>
-      <label className="flex items-center gap-2 px-1">
-        <span className="text-xs opacity-70">Свой цвет:</span>
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-6 w-8 cursor-pointer rounded border border-[var(--c-stroke)] bg-transparent"
-        />
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="u-select flex-1"
-          style={{ padding: "3px 6px" }}
-        />
-      </label>
-    </div>,
-    document.body
-  );
-}
-
 /* ---------- Пункт «Сохранить файл…» и «Открыть файл…» ---------- */
 
 export function useFileActions() {

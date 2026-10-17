@@ -6,13 +6,13 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 import { useEditor, MenuState } from "@/lib/editor/store";
 import {
-  STATUS_COLORS,
   DEFAULT_STATUS_COLOR,
   CardElement,
   ArrowElement,
 } from "@/lib/editor/types";
 import { requestImageAt } from "@/lib/editor/filepicker";
-import { ContextMenu, ColorPicker, MenuIcons, MenuItem, useFileActions } from "./ContextMenu";
+import { ContextMenu, MenuIcons, MenuItem, useFileActions } from "./ContextMenu";
+import { ColorPicker } from "./ColorPicker";
 import { ArrowStylePanel, CanvasBgPanel } from "./Panels";
 import { exportCanvasAsImage, exportWorkingFile } from "@/lib/editor/exporters";
 
@@ -405,9 +405,8 @@ function StatusColorPicker({ menu }: { menu: MenuState }) {
   if (!card) return null;
   return (
     <ColorPicker
-      title="Цвет статуса"
+      variant="compact"
       value={card.status?.color ?? DEFAULT_STATUS_COLOR}
-      palette={STATUS_COLORS}
       position={menu.screen}
       onChange={(c) => {
         if (card.status) updateElement(card.id, { status: { ...card.status, color: c } });
