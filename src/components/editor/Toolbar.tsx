@@ -68,8 +68,6 @@ export function Toolbar() {
     });
   };
 
-  if (uiHidden) return null;
-
   return (
     <div className="absolute top-0 left-0 right-0 z-40 flex flex-row flex-wrap items-start justify-between gap-2 no-select pointer-events-none p-4 sm:p-5 md:p-6">
       {/* Заголовок */}
@@ -98,8 +96,8 @@ export function Toolbar() {
           <div
             ref={titleRef}
             className="editable-hover font-bold text-[19px] sm:text-[22px] leading-tight text-[var(--c-headings)] border-b-2 border-[#9a7c5e]/60 pb-1 w-fit max-w-full break-words"
-            title="Нажмите, чтобы переименовать"
-            onClick={() => {
+            title="Дважды нажмите, чтобы редактировать"
+            onDoubleClick={() => {
               setTitleEditWidth(titleRef.current?.getBoundingClientRect().width ?? null);
               setEditing({ id: "__title__", field: "title" });
             }}
@@ -110,7 +108,12 @@ export function Toolbar() {
       </div>
 
       {/* Кнопки */}
-      <div className="pointer-events-auto ml-auto flex max-w-full flex-row flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+      <div
+        aria-hidden={uiHidden}
+        className={`ml-auto flex max-w-full flex-row flex-wrap items-center justify-end gap-1.5 sm:gap-2 ${
+          uiHidden ? "invisible pointer-events-none" : "pointer-events-auto"
+        }`}
+      >
         <button
           className="btn-gen w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] flex items-center justify-center shadow-sm"
           title="Отменить (Ctrl+Z)"

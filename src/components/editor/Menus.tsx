@@ -75,7 +75,6 @@ function useCanvasItems(menu: MenuState): MenuItem[] {
 
 function useCardItems(menu: MenuState): MenuItem[] {
   const elements = useEditor((s) => s.elements);
-  const openMenu = useEditor((s) => s.openMenu);
   const toggleCollapse = useEditor((s) => s.toggleCollapse);
   const duplicateElement = useEditor((s) => s.duplicateElement);
   const copyCard = useEditor((s) => s.copyCard);
@@ -90,7 +89,12 @@ function useCardItems(menu: MenuState): MenuItem[] {
     (el) => el.kind === "card" && el.id !== card.id
   ).length;
   const hasLinks = Object.values(elements).some(
-    (el) => el.kind === "arrow" && (el.fromCard === card.id || el.toCard === card.id)
+    (element) =>
+      element.kind === "arrow" &&
+      ((element.fromCard === card.id &&
+        Boolean(element.toCard && elements[element.toCard]?.kind === "card")) ||
+        (element.toCard === card.id &&
+          Boolean(element.fromCard && elements[element.fromCard]?.kind === "card")))
   );
 
   const items: MenuItem[] = [];
@@ -140,21 +144,22 @@ function useCardItems(menu: MenuState): MenuItem[] {
       label: card.collapsed ? "Развернуть" : "Свернуть",
       icon: card.collapsed ? MenuIcons.expand : MenuIcons.collapse,
       action: () => toggleCollapse(card.id),
-    },
-    {
+    }
+  );
+  if (hasLinks) {
+    items.push({
       label: "Отвязать от...",
       icon: MenuIcons.unlink,
       sub: "unlink" as const,
       subTitle: "Связанные карточки",
-      disabled: !hasLinks,
-    },
-    {
-      label: "Удалить",
-      icon: MenuIcons.delete,
-      warn: true,
-      action: () => removeElement(card.id),
-    }
-  );
+    });
+  }
+  items.push({
+    label: "Удалить",
+    icon: MenuIcons.delete,
+    warn: true,
+    action: () => removeElement(card.id),
+  });
   return items;
 }
 
@@ -164,6 +169,7 @@ function useArrowItems(menu: MenuState): MenuItem[] {
   const elements = useEditor((s) => s.elements);
   const openPanel = useEditor((s) => s.openPanel);
   const openMenu = useEditor((s) => s.openMenu);
+  const setEditing = useEditor((s) => s.setEditing);
   const removeElement = useEditor((s) => s.removeElement);
   const saveArrowStyleFrom = useEditor((s) => s.saveArrowStyleFrom);
 
@@ -173,6 +179,14 @@ function useArrowItems(menu: MenuState): MenuItem[] {
   if (!arrow) return [];
 
   return [
+    {
+      label: arrow.label ? "Редактировать описание" : "Добавить описание",
+      icon: MenuIcons.text,
+      action: () => {
+        openMenu(null);
+        setEditing({ id: arrow.id, field: "label" });
+      },
+    },
     {
       label: "Изменить стиль",
       icon: MenuIcons.paint,
@@ -246,8 +260,8 @@ function useSettingsItems(menu: MenuState): MenuItem[] {
   const expandAllCards = useEditor((s) => s.expandAllCards);
   const collapseAllCards = useEditor((s) => s.collapseAllCards);
   const openPanel = useEditor((s) => s.openPanel);
-  const resetView = useEditor((s) => s.resetView);
   const clearCanvas = useEditor((s) => s.clearCanvas);
+  const clearAllData = useEditor((s) => s.clearAllData);
   void menu;
 
   return [
@@ -255,7 +269,6 @@ function useSettingsItems(menu: MenuState): MenuItem[] {
     { label: "Открыть файл...", icon: MenuIcons.open, action: openFile },
     { label: "Развернуть все карточки", icon: MenuIcons.expand, action: expandAllCards },
     { label: "Свернуть все карточки", icon: MenuIcons.collapse, action: collapseAllCards },
-    { label: "К началу координат", icon: MenuIcons.origin, action: resetView },
     { label: "Поделиться холстом...", icon: MenuIcons.share, action: share },
     {
       label: "Изменить фон холста",
@@ -263,6 +276,15 @@ function useSettingsItems(menu: MenuState): MenuItem[] {
       action: () => openPanel({ type: "canvas-bg", screen: menu.screen }),
     },
     { label: "Очистить холст", icon: MenuIcons.clear, warn: true, action: () => clearCanvas() },
+    {
+      label: "Очистить все данные",
+      icon: MenuIcons.delete,
+      warn: true,
+      action: () => {
+        clearAllData();
+        toast.success("Все данные удалены");
+      },
+    },
   ];
 }
 
@@ -280,7 +302,7 @@ function useSimpleItems(menu: MenuState, kind: "image" | "text"): MenuItem[] {
             label: "Редактировать",
             icon: MenuIcons.text,
             action: () => {
-              useEditor.getState().pushHistory();
+              useEditor.getState().openMenu(null);
               setEditing({ id: menu.elementId!, field: "html" });
             },
           } as MenuItem,

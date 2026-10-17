@@ -14,6 +14,57 @@ export type Edge = "top" | "bottom" | "left" | "right";
 
 /** Зазор между границей карточки и привязанным концом стрелки. */
 export const CARD_ARROW_GAP = 12;
+/** Зазор между линией стрелки и её описанием. */
+export const ARROW_DESCRIPTION_GAP = 8;
+
+/** Axis-aligned рамка прямоугольника, повёрнутого вокруг своего центра. */
+export function rotatedBoundingRect(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation = 0
+): Rect {
+  const angle = (rotation * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(angle));
+  const sin = Math.abs(Math.sin(angle));
+  const w = width * cos + height * sin;
+  const h = width * sin + height * cos;
+  return {
+    x: x + (width - w) / 2,
+    y: y + (height - h) / 2,
+    w,
+    h,
+  };
+}
+
+/**
+ * Рамка описания стрелки. Центр смещается по нормали так, чтобы ближайшая
+ * грань текста оставалась ровно в 8 px от линии при любом наклоне стрелки.
+ */
+export function getArrowDescriptionRect(from: Point, to: Point, size: Size): Rect {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  let nx = length > 0.001 ? -dy / length : 0;
+  let ny = length > 0.001 ? dx / length : -1;
+  if (ny > 0 || (Math.abs(ny) < 0.001 && nx > 0)) {
+    nx *= -1;
+    ny *= -1;
+  }
+  const midX = (from.x + to.x) / 2;
+  const midY = (from.y + to.y) / 2;
+  const projectedHalfSize = Math.abs(nx) * size.w / 2 + Math.abs(ny) * size.h / 2;
+  const distance = ARROW_DESCRIPTION_GAP + projectedHalfSize;
+  const centerX = midX + nx * distance;
+  const centerY = midY + ny * distance;
+  return {
+    x: centerX - size.w / 2,
+    y: centerY - size.h / 2,
+    w: size.w,
+    h: size.h,
+  };
+}
 
 /**
  * Прямоугольник карточки. Реальные адаптивные размеры всегда поступают от
@@ -28,12 +79,12 @@ export function getCardRect(card: CardElement, rects: Record<string, Size>): Rec
 }
 
 export function getImageRect(img: ImageElement): Rect {
-  return { x: img.x, y: img.y, w: img.width, h: img.height };
+  return rotatedBoundingRect(img.x, img.y, img.width, img.height, img.rotation);
 }
 
 export function getTextBox(el: TextElement, rects: Record<string, Size>): Rect {
-  const h = rects[el.id]?.h ?? 40;
-  return { x: el.x, y: el.y, w: el.width, h };
+  const h = rects[el.id]?.h ?? Math.max(20, el.fontSize * 1.45);
+  return rotatedBoundingRect(el.x, el.y, el.width, h, el.rotation);
 }
 
 export function getElementRect(el: CanvasElement, rects: Record<string, Size>): Rect | null {
@@ -210,6 +261,14 @@ export function contentBBox(
       if (g) {
         add(Math.min(g.from.x, g.to.x) - 8, Math.min(g.from.y, g.to.y) - 22, 16, 30);
         add(Math.max(g.from.x, g.to.x) - 8, Math.max(g.from.y, g.to.y) - 8, 16, 24);
+        if (el.label) {
+          const descriptionSize = rects[el.id] ?? {
+            w: Math.min(220, Math.max(24, el.label.length * 6)),
+            h: 12,
+          };
+          const description = getArrowDescriptionRect(g.from, g.to, descriptionSize);
+          add(description.x, description.y, description.w, description.h);
+        }
       }
       continue;
     }

@@ -61,6 +61,8 @@ export type ImageElement = ElementBase & {
   src: string;
   width: number;
   height: number;
+  /** Поворот вокруг центра элемента, в градусах. */
+  rotation: number;
 };
 
 /* ------------------------- Текст ------------------------- */
@@ -70,6 +72,8 @@ export type TextElement = ElementBase & {
   /** HTML из contentEditable (B/I/U/цвет/список) */
   html: string;
   width: number;
+  fontSize: number;
+  rotation: number;
   color: string;
 };
 
@@ -241,6 +245,8 @@ export function makeText(x: number, y: number, patch: Partial<TextElement> = {})
     y,
     html: "Текст",
     width: 220,
+    fontSize: 14,
+    rotation: 0,
     color: "#161414",
     ...patch,
   };

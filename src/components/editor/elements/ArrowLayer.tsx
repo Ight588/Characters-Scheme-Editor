@@ -2,7 +2,7 @@
 
 /* Слой стрелок: SVG-линии + HTML-подписи, привязка к карточкам */
 
-import React, { useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useEditor } from "@/lib/editor/store";
 import {
   ARROW_THICKNESS_PX,
@@ -11,7 +11,12 @@ import {
   CardElement,
   Point,
 } from "@/lib/editor/types";
-import { computeArrowGeometries, distToRect, getCardRect } from "@/lib/editor/geometry";
+import {
+  computeArrowGeometries,
+  distToRect,
+  getArrowDescriptionRect,
+  getCardRect,
+} from "@/lib/editor/geometry";
 import { EditableText } from "../EditableText";
 import { useElementDrag } from "./CardElement";
 
@@ -252,6 +257,89 @@ function ArrowShape({
   );
 }
 
+function ArrowDescription({
+  arrow,
+  from,
+  to,
+  interactive,
+}: {
+  arrow: ArrowElement;
+  from: Point;
+  to: Point;
+  interactive: boolean;
+}) {
+  const editing = useEditor((state) => state.editing);
+  const measured = useEditor((state) => state.rects[arrow.id]);
+  const setRect = useEditor((state) => state.setRect);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const isEditing = editing?.id === arrow.id && editing.field === "label";
+  const visible = Boolean(arrow.label) || isEditing;
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!visible || !element) return;
+    const measure = () => setRect(arrow.id, element.offsetWidth, element.offsetHeight);
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    measure();
+    return () => observer.disconnect();
+  }, [arrow.id, setRect, visible]);
+
+  if (!visible) return null;
+
+  const fallbackWidth = arrow.label
+    ? Math.min(220, Math.max(24, arrow.label.length * 6))
+    : 80;
+  const bounds = getArrowDescriptionRect(from, to, measured ?? { w: fallbackWidth, h: 12 });
+
+  return (
+    <div
+      ref={ref}
+      data-arrow-description={arrow.id}
+      className="absolute"
+      style={{
+        left: bounds.x + bounds.w / 2,
+        top: bounds.y + bounds.h / 2,
+        transform: "translate(-50%, -50%)",
+        width: "max-content",
+        minWidth: isEditing ? 80 : undefined,
+        maxWidth: 220,
+        fontSize: 10,
+        lineHeight: "12px",
+        pointerEvents: interactive ? "auto" : "none",
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onContextMenu={(event) => {
+        if (!interactive) return;
+        event.preventDefault();
+        event.stopPropagation();
+        useEditor.getState().select(arrow.id);
+        useEditor.getState().openMenu({
+          type: "arrow",
+          screen: { x: event.clientX, y: event.clientY },
+          world: { x: 0, y: 0 },
+          elementId: arrow.id,
+        });
+      }}
+    >
+      <EditableText
+        id={arrow.id}
+        field="label"
+        value={arrow.label}
+        onChange={(value) => useEditor.getState().updateElement(arrow.id, { label: value })}
+        className="text-center"
+        style={{
+          color: arrow.color,
+          display: "inline-block",
+          minWidth: isEditing ? 80 : undefined,
+          maxWidth: 220,
+          wordBreak: "break-word",
+        }}
+      />
+    </div>
+  );
+}
+
 const SVG_PAD = 5000;
 const SVG_SPAN = 10000;
 
@@ -288,44 +376,16 @@ export function ArrowLayer({ interactive }: { interactive: boolean }) {
         </g>
       </svg>
       {arrows.map((arrow) => {
-        const g = geometries.get(arrow.id);
-        if (!g || !arrow.label) return null;
-        const mid = { x: (g.from.x + g.to.x) / 2, y: (g.from.y + g.to.y) / 2 };
+        const geometry = geometries.get(arrow.id);
+        if (!geometry) return null;
         return (
-          <div
+          <ArrowDescription
             key={arrow.id}
-            className="absolute"
-            style={{
-              left: mid.x,
-              top: mid.y,
-              transform: "translate(-50%, -130%)",
-              width: "max-content",
-              maxWidth: 220,
-              pointerEvents: interactive ? "auto" : "none",
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onContextMenu={(e) => {
-              if (!interactive) return;
-              e.preventDefault();
-              e.stopPropagation();
-              useEditor.getState().select(arrow.id);
-              useEditor.getState().openMenu({
-                type: "arrow",
-                screen: { x: e.clientX, y: e.clientY },
-                world: { x: 0, y: 0 },
-                elementId: arrow.id,
-              });
-            }}
-          >
-            <EditableText
-              id={arrow.id}
-              field="label"
-              value={arrow.label}
-              onChange={(v) => useEditor.getState().updateElement(arrow.id, { label: v })}
-              className="text-[12px] font-semibold text-center"
-              style={{ color: arrow.color, wordBreak: "break-word" }}
-            />
-          </div>
+            arrow={arrow}
+            from={geometry.from}
+            to={geometry.to}
+            interactive={interactive}
+          />
         );
       })}
     </>
