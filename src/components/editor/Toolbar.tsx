@@ -5,7 +5,7 @@
 import React, { useEffect, useRef } from "react";
 import { Undo2, Redo2, Plus, CreditCard, Settings, LocateFixed } from "lucide-react";
 import { useEditor } from "@/lib/editor/store";
-import { TextFormatToolbar } from "./elements/TextElement";
+import { TextFormatToolbar } from "./TextFormatToolbar";
 
 function titleHasText(html: string): boolean {
   return html
@@ -29,7 +29,7 @@ export function Toolbar() {
   const setEditing = useEditor((s) => s.setEditing);
   const editing = useEditor((s) => s.editing);
   const titleRef = useRef<HTMLDivElement | null>(null);
-  const [titleEditWidth, setTitleEditWidth] = React.useState<number | null>(null);
+  const [titleEditMinWidth, setTitleEditMinWidth] = React.useState<number | null>(null);
   const [titleToolbarPosition, setTitleToolbarPosition] = React.useState<{
     left: number;
     top: number;
@@ -56,7 +56,7 @@ export function Toolbar() {
     const nextTitle = titleHasText(html) ? html : "";
     if (nextTitle !== title) setTitle(nextTitle);
     setEditing(null);
-    setTitleEditWidth(null);
+    setTitleEditMinWidth(null);
     setTitleToolbarPosition(null);
   };
 
@@ -91,10 +91,11 @@ export function Toolbar() {
           <div
             key="title-editor"
             ref={titleRef}
+            data-title-editor
             contentEditable
             suppressContentEditableWarning
-            className="editable-active font-bold text-[19px] sm:text-[22px] leading-tight text-[var(--c-headings)] max-w-full border-b-2 border-[#9a7c5e]/60 pb-1 break-words"
-            style={{ width: titleEditWidth ?? undefined, minWidth: titleEditWidth ?? undefined }}
+            className="editable-active w-full max-w-full break-words border-b-2 border-[#9a7c5e]/60 pb-1 font-bold text-[19px] leading-tight text-[var(--c-headings)] sm:w-fit sm:text-[22px]"
+            style={{ minWidth: titleEditMinWidth ?? undefined }}
             onBlur={commitTitle}
             onKeyDown={(e) => {
               e.stopPropagation();
@@ -104,7 +105,7 @@ export function Toolbar() {
               }
               if (e.key === "Escape") {
                 setEditing(null);
-                setTitleEditWidth(null);
+                setTitleEditMinWidth(null);
                 setTitleToolbarPosition(null);
               }
             }}
@@ -113,11 +114,12 @@ export function Toolbar() {
           <div
             key="title-display"
             ref={titleRef}
+            data-title-display
             className="editable-hover w-full max-w-full break-words border-b-2 border-[#9a7c5e]/60 pb-1 font-bold text-[19px] leading-tight text-[var(--c-headings)] sm:w-fit sm:text-[22px]"
             title="Дважды нажмите, чтобы редактировать"
             onDoubleClick={() => {
               const bounds = titleRef.current?.getBoundingClientRect();
-              setTitleEditWidth(bounds?.width ?? null);
+              setTitleEditMinWidth(bounds?.width ?? null);
               setTitleToolbarPosition(
                 bounds ? { left: bounds.left, top: bounds.bottom + 8 } : null
               );

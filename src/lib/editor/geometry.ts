@@ -39,9 +39,15 @@ export function rotatedBoundingRect(
   };
 }
 
+/** Угол подписи вдоль стрелки; текст не переворачивается вверх ногами. */
+export function getArrowDescriptionRotation(from: Point, to: Point): number {
+  const angle = (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+  return angle > 90 ? angle - 180 : angle < -90 ? angle + 180 : angle;
+}
+
 /**
- * Рамка описания стрелки. Центр смещается по нормали так, чтобы ближайшая
- * грань текста оставалась ровно в 8 px от линии при любом наклоне стрелки.
+ * Axis-aligned рамка повёрнутого описания. Текст идёт параллельно стрелке,
+ * поэтому расстояние по нормали равно половине его высоты плюс ровно 8 px.
  */
 export function getArrowDescriptionRect(from: Point, to: Point, size: Size): Rect {
   const dx = to.x - from.x;
@@ -53,18 +59,16 @@ export function getArrowDescriptionRect(from: Point, to: Point, size: Size): Rec
     nx *= -1;
     ny *= -1;
   }
-  const midX = (from.x + to.x) / 2;
-  const midY = (from.y + to.y) / 2;
-  const projectedHalfSize = Math.abs(nx) * size.w / 2 + Math.abs(ny) * size.h / 2;
-  const distance = ARROW_DESCRIPTION_GAP + projectedHalfSize;
-  const centerX = midX + nx * distance;
-  const centerY = midY + ny * distance;
-  return {
-    x: centerX - size.w / 2,
-    y: centerY - size.h / 2,
-    w: size.w,
-    h: size.h,
-  };
+  const distance = ARROW_DESCRIPTION_GAP + size.h / 2;
+  const centerX = (from.x + to.x) / 2 + nx * distance;
+  const centerY = (from.y + to.y) / 2 + ny * distance;
+  return rotatedBoundingRect(
+    centerX - size.w / 2,
+    centerY - size.h / 2,
+    size.w,
+    size.h,
+    getArrowDescriptionRotation(from, to)
+  );
 }
 
 /**
@@ -73,8 +77,8 @@ export function getArrowDescriptionRect(from: Point, to: Point, size: Size): Rec
  */
 export function getCardRect(card: CardElement, rects: Record<string, Size>): Rect {
   const fallback: Size = card.collapsed
-    ? { w: CARD_COMPACT_MAX_WIDTH, h: 180 }
-    : { w: CARD_EXPANDED_WIDTH, h: 160 };
+    ? { w: CARD_COMPACT_MAX_WIDTH, h: 161 }
+    : { w: CARD_EXPANDED_WIDTH, h: 168 };
   const s = rects[card.id] ?? fallback;
   return { x: card.x, y: card.y, w: s.w, h: s.h };
 }
