@@ -66,7 +66,17 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export function sanitizeFilename(name: string, fallback: string): string {
-  const cleaned = (name || "").trim().replace(/[\\/:*?"<>|]+/g, "_");
+  const plainText = (name || "")
+    .replace(/<br\s*\/?\s*>/gi, " ")
+    .replace(/<\/li\s*>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(?:39|x27);/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+  const cleaned = plainText.trim().replace(/[\\/:*?"<>|]+/g, "_");
   return cleaned.length ? cleaned : fallback;
 }
 

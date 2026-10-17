@@ -65,6 +65,22 @@ export default function Editor() {
     };
   }, [hydrate]);
 
+  /* ---- завершение редактирования перед любым другим действием ---- */
+  useEffect(() => {
+    const finishTextEditing = (event: PointerEvent) => {
+      const active = document.activeElement as HTMLElement | null;
+      const target = event.target as Element | null;
+      if (!active?.isContentEditable || active.contains(target)) return;
+      // Кнопки форматирования должны сохранять выделение и активный редактор.
+      if (target?.closest("[data-text-format-toolbar]")) return;
+      // blur синхронно вызывает commit активного EditableText/TextView/заголовка,
+      // после чего исходный pointerdown продолжает своё обычное действие.
+      active.blur();
+    };
+    document.addEventListener("pointerdown", finishTextEditing, true);
+    return () => document.removeEventListener("pointerdown", finishTextEditing, true);
+  }, []);
+
   /* ---- автосохранение ---- */
   useEffect(() => {
     if (!hydrated) return;
@@ -174,7 +190,9 @@ export default function Editor() {
           state.removeElement(state.selectedId);
         }
       } else if (e.key === "Escape") {
-        if (state.menu || state.panel) {
+        if (state.clearAllConfirmOpen) {
+          state.setClearAllConfirmOpen(false);
+        } else if (state.menu || state.panel) {
           state.openMenu(null);
           state.openPanel(null);
         } else if (state.editing) {
