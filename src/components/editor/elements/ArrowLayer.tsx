@@ -13,11 +13,12 @@ import {
 } from "@/lib/editor/types";
 import { designPixels } from "@/lib/editor/design";
 import {
-  computeArrowGeometries,
+  ArrowLayout,
+  closestPointOnPolyline,
+  computeArrowLayouts,
   distToRect,
-  getArrowDescriptionRect,
-  getArrowDescriptionRotation,
   getCardRect,
+  getSegmentNormal,
 } from "@/lib/editor/geometry";
 import { EditableText } from "../EditableText";
 import { useElementDrag } from "./CardElement";
@@ -73,48 +74,71 @@ function shaftInset(head: ArrowHead, headSize: number, width: number): number {
     return headSize + width / 2;
   }
   if (head === "line") {
-    // Убираем стержень из вершины открытого наконечника, сохраняя визуальное соединение.
     return Math.max(designPixels("--cards-rel-stroke"), width * 1.25);
   }
   return 0;
 }
 
-function insetSegment(
-  from: Point,
-  to: Point,
-  startInset: number,
-  endInset: number
-): { from: Point; to: Point } {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length < 0.001) return { from, to };
+/** Укоротить крайние сегменты ломаной, чтобы стержень не выходил из наконечника. */
+function insetPolyline(points: Point[], startInset: number, endInset: number): Point[] {
+  if (points.length < 2) return points;
+  const out = points.map((p) => ({ ...p }));
 
-  // Короткая стрелка не должна инвертировать направление стержня.
-  const requested = startInset + endInset;
-  const factor = requested > length ? Math.max(0, length - 0.01) / requested : 1;
-  const ux = dx / length;
-  const uy = dy / length;
-  const safeStart = startInset * factor;
-  const safeEnd = endInset * factor;
+  if (startInset > 0) {
+    const from = out[0];
+    const to = out[1];
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 0.001) {
+      const inset = Math.min(startInset, len - 0.01);
+      out[0] = { x: from.x + (dx / len) * inset, y: from.y + (dy / len) * inset };
+    }
+  }
+  if (endInset > 0) {
+    const n = out.length;
+    const from = out[n - 2];
+    const to = out[n - 1];
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 0.001) {
+      const inset = Math.min(endInset, len - 0.01);
+      out[n - 1] = { x: to.x - (dx / len) * inset, y: to.y - (dy / len) * inset };
+    }
+  }
+  return out;
+}
+
+function buildPath(points: Point[]): string {
+  if (!points.length) return "";
+  return points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ");
+}
+
+function worldFromEvent(ev: PointerEvent | React.PointerEvent | React.MouseEvent): Point {
+  const viewport = document.getElementById("editor-viewport");
+  if (!viewport) return { x: 0, y: 0 };
+  const rect = viewport.getBoundingClientRect();
+  const view = useEditor.getState().view;
   return {
-    from: { x: from.x + ux * safeStart, y: from.y + uy * safeStart },
-    to: { x: to.x - ux * safeEnd, y: to.y - uy * safeEnd },
+    x: (ev.clientX - rect.left - (rect.width / 2 + view.x)) / view.scale,
+    y: (ev.clientY - rect.top - (rect.height / 2 + view.y)) / view.scale,
   };
 }
 
 function ArrowShape({
   arrow,
-  from,
-  to,
+  layout,
   interactive,
 }: {
   arrow: ArrowElement;
-  from: Point;
-  to: Point;
+  layout: ArrowLayout;
   interactive: boolean;
 }) {
   const selected = useEditor((s) => s.selectedIds.includes(arrow.id));
+  const selectedWaypoint = useEditor((s) => s.selectedWaypoint);
   const groupSelected = useEditor((s) =>
     Boolean(
       arrow.groupId &&
@@ -127,8 +151,14 @@ function ArrowShape({
   const toggleSelection = useEditor((s) => s.toggleSelection);
   const openMenu = useEditor((s) => s.openMenu);
   const pushHistory = useEditor((s) => s.pushHistory);
+  const setSelectedWaypoint = useEditor((s) => s.setSelectedWaypoint);
+  const insertWaypointAt = useEditor((s) => s.insertWaypointAt);
   const { onPointerDown } = useElementDrag("arrow-body");
   const outlined = selected || groupSelected;
+
+  const points = layout.points;
+  const first = points[0];
+  const last = points[points.length - 1];
 
   const width = arrowThickness(arrow.thickness);
   const dashed = arrow.lineStyle === "dashed";
@@ -137,9 +167,10 @@ function ArrowShape({
   const showStart = arrow.ends === "both" || arrow.ends === "start";
   const showEnd = arrow.ends === "both" || arrow.ends === "end";
   const inset = shaftInset(arrow.head, headSize, width);
-  const shaft = insetSegment(from, to, showStart ? inset : 0, showEnd ? inset : 0);
-  const hitPath = `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
-  const shaftPath = `M ${shaft.from.x} ${shaft.from.y} L ${shaft.to.x} ${shaft.to.y}`;
+  const shaft = insetPolyline(points, showStart ? inset : 0, showEnd ? inset : 0);
+
+  const hitPath = buildPath(points);
+  const shaftPath = buildPath(shaft);
 
   const dragState = useRef<{ moved: boolean; pushed: boolean } | null>(null);
 
@@ -157,17 +188,6 @@ function ArrowShape({
       if (!cur) return;
       useEditor.getState().moveElement(arrow.id, cur.x + dxW, cur.y + dyW);
     });
-  };
-
-  const worldFromEvent = (ev: PointerEvent | React.PointerEvent): Point => {
-    const viewport = document.getElementById("editor-viewport");
-    if (!viewport) return { x: 0, y: 0 };
-    const rect = viewport.getBoundingClientRect();
-    const view = useEditor.getState().view;
-    return {
-      x: (ev.clientX - rect.left - (rect.width / 2 + view.x)) / view.scale,
-      y: (ev.clientY - rect.top - (rect.height / 2 + view.y)) / view.scale,
-    };
   };
 
   const beginEndDrag = (e: React.PointerEvent, end: "from" | "to") => {
@@ -223,6 +243,60 @@ function ArrowShape({
     window.addEventListener("pointerup", up);
   };
 
+  const beginWaypointDrag = (e: React.PointerEvent, index: number) => {
+    if (!interactive || e.button !== 0) return;
+    e.stopPropagation();
+    if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
+    setSelectedWaypoint({ arrowId: arrow.id, index });
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) return;
+        moved = true;
+        pushHistory();
+      }
+      useEditor.getState().updateWaypoint(arrow.id, index, worldFromEvent(ev));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (!interactive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
+    insertWaypointAt(arrow.id, worldFromEvent(e));
+  };
+
+  const openArrowMenu = (e: React.MouseEvent) => {
+    if (!interactive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
+    setSelectedWaypoint(null);
+    openMenu({
+      type: "arrow",
+      screen: { x: e.clientX, y: e.clientY },
+      world: worldFromEvent(e),
+      elementId: arrow.id,
+    });
+  };
+
+  const waypointWorldPoints = (arrow.waypoints ?? []).map((wp) => ({
+    x: arrow.x + wp.x,
+    y: arrow.y + wp.y,
+  }));
+
   return (
     <g
       className={`arrow-group ${outlined ? "arrow-selected" : ""}`}
@@ -232,25 +306,12 @@ function ArrowShape({
       <path
         d={hitPath}
         stroke="transparent"
-        strokeWidth={Math.max(
-          designPixels("--p-16"),
-          width + designPixels("--p-12")
-        )}
+        strokeWidth={Math.max(designPixels("--p-16"), width + designPixels("--p-12"))}
         fill="none"
         style={{ pointerEvents: interactive ? "stroke" : "none", cursor: "pointer" }}
         onPointerDown={beginBodyDrag}
-        onContextMenu={(e) => {
-          if (!interactive) return;
-          e.preventDefault();
-          e.stopPropagation();
-          if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
-          openMenu({
-            type: "arrow",
-            screen: { x: e.clientX, y: e.clientY },
-            world: { x: 0, y: 0 },
-            elementId: arrow.id,
-          });
-        }}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={openArrowMenu}
       />
       <path
         d={shaftPath}
@@ -258,29 +319,70 @@ function ArrowShape({
         strokeWidth={width}
         strokeDasharray={dashed ? `${width * 2.6} ${width * 2}` : undefined}
         strokeLinecap="round"
+        strokeLinejoin="round"
         fill="none"
         style={{ pointerEvents: "none" }}
       />
-      {showStart && headPolygons(from, to, arrow.head, headSize, arrow.color)}
-      {showEnd && headPolygons(to, from, arrow.head, headSize, arrow.color)}
+      {showStart && points.length >= 2 && headPolygons(first, points[1], arrow.head, headSize, arrow.color)}
+      {showEnd &&
+        points.length >= 2 &&
+        headPolygons(last, points[points.length - 2], arrow.head, headSize, arrow.color)}
       {interactive && (
         <g className="arrow-handles">
           <circle
-            cx={from.x}
-            cy={from.y}
+            cx={first.x}
+            cy={first.y}
             r={designPixels("--p-6")}
             className="arrow-handle"
             style={{ cursor: "grab" }}
             onPointerDown={(e) => beginEndDrag(e, "from")}
           />
           <circle
-            cx={to.x}
-            cy={to.y}
+            cx={last.x}
+            cy={last.y}
             r={designPixels("--p-6")}
             className="arrow-handle"
             style={{ cursor: "grab" }}
             onPointerDown={(e) => beginEndDrag(e, "to")}
           />
+          {waypointWorldPoints.map((point, index) => {
+            const isSelected =
+              selectedWaypoint?.arrowId === arrow.id && selectedWaypoint.index === index;
+            return (
+              <circle
+                key={`wp-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r={designPixels("--p-6")}
+                data-waypoint-arrow-id={arrow.id}
+                data-waypoint-index={index}
+                className={`arrow-handle arrow-handle--waypoint ${
+                  isSelected ? "arrow-handle--selected" : ""
+                }`}
+                style={{ cursor: "grab" }}
+                onPointerDown={(e) => beginWaypointDrag(e, index)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
+                  setSelectedWaypoint({ arrowId: arrow.id, index });
+                }}
+                onContextMenu={(e) => {
+                  if (!interactive) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
+                  setSelectedWaypoint({ arrowId: arrow.id, index });
+                  openMenu({
+                    type: "arrow-waypoint",
+                    screen: { x: e.clientX, y: e.clientY },
+                    world: worldFromEvent(e),
+                    elementId: arrow.id,
+                    waypointIndex: index,
+                  });
+                }}
+              />
+            );
+          })}
         </g>
       )}
     </g>
@@ -289,19 +391,22 @@ function ArrowShape({
 
 function ArrowDescription({
   arrow,
-  from,
-  to,
+  layout,
   interactive,
 }: {
   arrow: ArrowElement;
-  from: Point;
-  to: Point;
+  layout: ArrowLayout;
   interactive: boolean;
 }) {
   const editing = useEditor((state) => state.editing);
-  const measured = useEditor((state) => state.rects[arrow.id]);
   const setRect = useEditor((state) => state.setRect);
+  const pushHistory = useEditor((state) => state.pushHistory);
   const ref = useRef<HTMLDivElement | null>(null);
+  const layoutRef = useRef(layout);
+  const suppressClickUntil = useRef(0);
+  useEffect(() => {
+    layoutRef.current = layout;
+  }, [layout]);
   const isEditing = editing?.id === arrow.id && editing.field === "label";
   const visible = Boolean(arrow.label) || isEditing;
 
@@ -327,23 +432,83 @@ function ArrowDescription({
         Math.max(designPixels("--p-24"), arrow.label.length * designPixels("--p-6"))
       )
     : designPixels("--comp-pad-hor") * 2 + designPixels("--comp-pad-vert");
-  const bounds = getArrowDescriptionRect(
-    from,
-    to,
-    measured ?? { w: fallbackWidth, h: designPixels("--p-12") }
-  );
-  const rotation = getArrowDescriptionRotation(from, to);
+
+  const labelLayout =
+    layout.label ??
+    (() => {
+      // fallback до первого измерения: середина текущего пути
+      const points = layout.points;
+      const a = points[Math.max(0, Math.floor(points.length / 2) - 1)];
+      const b = points[Math.floor(points.length / 2)] ?? a;
+      const rotation = a && b ? (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI : 0;
+      return {
+        t: 0.5,
+        side: 1 as const,
+        center: a ? { x: a.x, y: a.y } : { x: 0, y: 0 },
+        rect: { x: -fallbackWidth / 2, y: 0, w: fallbackWidth, h: designPixels("--p-12") },
+        rotation,
+      };
+    })();
+
+  const beginLabelDrag = (e: React.PointerEvent) => {
+    if (!interactive || e.button !== 0) return;
+    if (e.shiftKey) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("[contenteditable='true']")) return;
+    if (useEditor.getState().editing?.id === arrow.id) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    let pushed = false;
+
+    const move = (ev: PointerEvent) => {
+      if (!moved) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) return;
+        moved = true;
+      }
+      if (!pushed) {
+        pushHistory();
+        pushed = true;
+        if (!useEditor.getState().selectedIds.includes(arrow.id)) {
+          useEditor.getState().select(arrow.id);
+        }
+      }
+      const points = layoutRef.current.points;
+      if (points.length < 2) return;
+      const world = worldFromEvent(ev);
+      const closest = closestPointOnPolyline(world, points);
+      const index = closest.segmentIndex;
+      const a = points[index];
+      if (!a) return;
+      const normal = getSegmentNormal(points, index, 1);
+      const side: 1 | -1 =
+        (world.x - a.x) * normal.x + (world.y - a.y) * normal.y >= 0 ? 1 : -1;
+      useEditor.getState().setLabelPlacement(arrow.id, closest.t, side);
+    };
+
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (moved) suppressClickUntil.current = Date.now() + 400;
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
 
   return (
     <div
       ref={ref}
       data-arrow-description={arrow.id}
-      data-arrow-description-rotation={rotation}
+      data-arrow-description-rotation={labelLayout.rotation}
       className="absolute font-[var(--font-weight-bold-small)]"
       style={{
-        left: bounds.x + bounds.w / 2,
-        top: bounds.y + bounds.h / 2,
-        transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+        left: labelLayout.center.x,
+        top: labelLayout.center.y,
+        transform: `translate(-50%, -50%) rotate(${labelLayout.rotation}deg)`,
         transformOrigin: "center",
         width: "max-content",
         minWidth: isEditing
@@ -353,6 +518,16 @@ function ArrowDescription({
         fontSize: "var(--cards-age)",
         lineHeight: "var(--p-12)",
         pointerEvents: interactive ? "auto" : "none",
+        cursor: interactive && !isEditing ? "grab" : undefined,
+        userSelect: isEditing ? "text" : "none",
+        WebkitUserSelect: isEditing ? "text" : "none",
+      }}
+      onPointerDownCapture={beginLabelDrag}
+      onClickCapture={(event) => {
+        if (Date.now() >= suppressClickUntil.current) return;
+        suppressClickUntil.current = 0;
+        event.preventDefault();
+        event.stopPropagation();
       }}
       onPointerDown={(event) => {
         event.stopPropagation();
@@ -370,7 +545,7 @@ function ArrowDescription({
         useEditor.getState().openMenu({
           type: "arrow",
           screen: { x: event.clientX, y: event.clientY },
-          world: { x: 0, y: 0 },
+          world: worldFromEvent(event),
           elementId: arrow.id,
         });
       }}
@@ -380,6 +555,7 @@ function ArrowDescription({
         field="label"
         value={arrow.label}
         onChange={(value) => useEditor.getState().updateElement(arrow.id, { label: value })}
+        title="Нажмите, чтобы редактировать; перетащите, чтобы переместить"
         className="text-center"
         style={{
           color: arrow.color,
@@ -389,6 +565,7 @@ function ArrowDescription({
             : undefined,
           maxWidth,
           wordBreak: "break-word",
+          cursor: interactive && !isEditing ? "grab" : "text",
         }}
       />
     </div>
@@ -401,29 +578,38 @@ const SVG_SPAN = 10000;
 export function ArrowLayer({ interactive }: { interactive: boolean }) {
   const elements = useEditor((s) => s.elements);
   const rects = useEditor((s) => s.rects);
+  const order = useEditor((s) => s.order);
 
+  const layouts = useMemo(() => computeArrowLayouts(elements, rects), [elements, rects]);
   const arrows = useMemo(
-    () => Object.values(elements).filter((el): el is ArrowElement => el.kind === "arrow"),
-    [elements]
+    () =>
+      order
+        .map((id) => elements[id])
+        .filter((el): el is ArrowElement => el?.kind === "arrow"),
+    [elements, order]
   );
-  const geometries = useMemo(() => computeArrowGeometries(elements, rects), [elements, rects]);
 
   return (
     <>
       <svg
         className="absolute pointer-events-none"
-        style={{ left: -SVG_PAD, top: -SVG_PAD, width: SVG_SPAN, height: SVG_SPAN, overflow: "visible" }}
+        style={{
+          left: -SVG_PAD,
+          top: -SVG_PAD,
+          width: SVG_SPAN,
+          height: SVG_SPAN,
+          overflow: "visible",
+        }}
       >
         <g transform={`translate(${SVG_PAD}, ${SVG_PAD})`}>
           {arrows.map((arrow) => {
-            const g = geometries.get(arrow.id);
-            if (!g) return null;
+            const layout = layouts.get(arrow.id);
+            if (!layout) return null;
             return (
               <ArrowShape
                 key={arrow.id}
                 arrow={arrow}
-                from={g.from}
-                to={g.to}
+                layout={layout}
                 interactive={interactive}
               />
             );
@@ -431,14 +617,13 @@ export function ArrowLayer({ interactive }: { interactive: boolean }) {
         </g>
       </svg>
       {arrows.map((arrow) => {
-        const geometry = geometries.get(arrow.id);
-        if (!geometry) return null;
+        const layout = layouts.get(arrow.id);
+        if (!layout) return null;
         return (
           <ArrowDescription
             key={arrow.id}
             arrow={arrow}
-            from={geometry.from}
-            to={geometry.to}
+            layout={layout}
             interactive={interactive}
           />
         );

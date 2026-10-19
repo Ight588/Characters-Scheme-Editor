@@ -205,7 +205,10 @@ export default function Editor() {
         if (e.shiftKey) state.ungroupSelection();
         else state.groupSelection();
       } else if (!typing && (e.key === "Delete" || e.key === "Backspace")) {
-        if (state.selectedIds.length || state.selectedId) {
+        if (state.selectedWaypoint) {
+          e.preventDefault();
+          state.removeWaypoint(state.selectedWaypoint.arrowId, state.selectedWaypoint.index);
+        } else if (state.selectedIds.length || state.selectedId) {
           e.preventDefault();
           state.removeSelection();
         }
@@ -215,6 +218,8 @@ export default function Editor() {
         } else if (state.menu || state.panel) {
           state.openMenu(null);
           state.openPanel(null);
+        } else if (state.selectedWaypoint) {
+          state.setSelectedWaypoint(null);
         } else if (state.editing) {
           state.setEditing(null);
         } else if (state.shareOpen) {

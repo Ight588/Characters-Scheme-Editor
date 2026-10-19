@@ -5,7 +5,7 @@
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
 import { useEditor, getPersistedSlice } from "./store";
-import { computeArrowGeometries, contentBBox } from "./geometry";
+import { computeArrowLayouts, contentBBox } from "./geometry";
 import { downloadBlob, sanitizeFilename, serializeWorkingFile } from "./storage";
 import { designPixels } from "./design";
 const raf = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
@@ -30,8 +30,8 @@ export async function exportCanvasAsImage(mode: "full" | "mini", format: "png" |
   await raf();
 
   const s = useEditor.getState();
-  const geometries = computeArrowGeometries(s.elements, s.rects);
-  const bbox = contentBBox(s.elements, s.rects, geometries);
+  const layouts = computeArrowLayouts(s.elements, s.rects);
+  const bbox = contentBBox(s.elements, s.rects, layouts);
   const padding = designPixels("--p-20") * 2;
   const width = Math.ceil(bbox.w + padding * 2);
   const height = Math.ceil(bbox.h + padding * 2);
