@@ -45,6 +45,15 @@ export type ArrowElement = ElementBase & {
   fromPoint: Point;
   /** свободная точка конца */
   toPoint: Point;
+  /** Промежуточные точки поворота (относительно x,y). Пустой массив — прямая. */
+  waypoints?: Point[];
+  /**
+   * Положение описания вдоль стрелки: 0 — начало, 1 — конец.
+   * Если не задано — описание автоматически ставится в середину.
+   */
+  labelT?: number;
+  /** Сторона описания относительно линии: 1 — «верхняя», -1 — нижняя. */
+  labelSide?: 1 | -1;
   label: string;
   color: string;
   lineStyle: "solid" | "dashed";

@@ -24,6 +24,7 @@ import {
   normalizeView,
   uid,
 } from "./types";
+import { computeArrowLayouts, suggestWaypointInsertion } from "./geometry";
 import { clearStorage } from "./storage";
 
 export type Snapshot = {
@@ -35,13 +36,14 @@ export type Snapshot = {
   savedArrowStyles: SavedArrowStyle[];
 };
 
-export type MenuType = "canvas" | "card" | "arrow" | "status" | "image" | "text" | "settings";
+export type MenuType = "canvas" | "card" | "arrow" | "arrow-waypoint" | "status" | "image" | "text" | "settings";
 
 export type MenuState = {
   type: MenuType;
   screen: Point; // координаты курсора в окне
   world: Point; // точка в мировых координатах
   elementId?: string;
+  waypointIndex?: number;
   sub?: "cards" | "statuses" | "styles" | "link" | "group" | "unlink" | "status-color" | null;
   subTitle?: string;
 };
@@ -74,6 +76,7 @@ type EditorState = {
   rects: Record<string, { w: number; h: number }>;
   selectedId: string | null;
   selectedIds: string[];
+  selectedWaypoint: { arrowId: string; index: number } | null;
   editing: { id: string; field: string } | null;
   menu: MenuState | null;
   panel: PanelState | null;
@@ -152,6 +155,13 @@ type EditorState = {
   setExportMode: (mode: ExportMode) => void;
   setExportOffset: (p: Point) => void;
   toggleUiHidden: () => void;
+
+  setSelectedWaypoint: (s: { arrowId: string; index: number } | null) => void;
+
+  insertWaypointAt: (arrowId: string, world?: Point) => void;
+  updateWaypoint: (arrowId: string, index: number, world: Point) => void;
+  removeWaypoint: (arrowId: string, index: number) => void;
+  setLabelPlacement: (arrowId: string, t: number, side: 1 | -1) => void;
 };
 
 const MAX_HISTORY = 60;
@@ -176,11 +186,30 @@ function normalizeRotation(value: number | undefined): number {
 function normalizeCanvasElement(el: CanvasElement): CanvasElement {
   const base = { ...el, ...normalizePoint(el) } as CanvasElement;
   if (base.kind === "arrow") {
+    const arrow = base as ArrowElement;
+    const rawWaypoints = Array.isArray(arrow.waypoints) ? arrow.waypoints : [];
+    const waypoints = rawWaypoints
+      .filter(
+        (point): point is Point =>
+          Boolean(point) &&
+          Number.isFinite(point?.x) &&
+          Number.isFinite(point?.y)
+      )
+      .map((point) => ({ x: Number(point.x), y: Number(point.y) }));
+    const labelT =
+      typeof arrow.labelT === "number" && Number.isFinite(arrow.labelT)
+        ? Math.max(0, Math.min(1, arrow.labelT))
+        : undefined;
+    const labelSide =
+      arrow.labelSide === 1 || arrow.labelSide === -1 ? arrow.labelSide : undefined;
     return {
       ...base,
       fromPoint: normalizePoint(base.fromPoint),
       toPoint: normalizePoint(base.toPoint),
-    };
+      waypoints: waypoints.length ? waypoints : undefined,
+      labelT,
+      labelSide,
+    } as CanvasElement;
   }
   if (base.kind === "image") {
     return {
@@ -240,7 +269,10 @@ function cloneCanvasElement(element: CanvasElement): CanvasElement {
       ...element,
       fromPoint: { ...element.fromPoint },
       toPoint: { ...element.toPoint },
-    };
+      ...(element.waypoints ? { waypoints: element.waypoints.map((p) => ({ ...p })) } : {}),
+      ...(element.labelT !== undefined ? { labelT: element.labelT } : {}),
+      ...(element.labelSide !== undefined ? { labelSide: element.labelSide } : {}),
+    } as CanvasElement;
   }
   return { ...element };
 }
@@ -272,6 +304,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   rects: {},
   selectedId: null,
   selectedIds: [],
+  selectedWaypoint: null,
   editing: null,
   menu: null,
   panel: null,
@@ -299,6 +332,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       savedStatuses: data.savedStatuses ?? [],
       savedArrowStyles: data.savedArrowStyles ?? [],
       view: normalizeView(data.view),
+      selectedId: null,
+      selectedIds: [],
+      selectedWaypoint: null,
+      editing: null,
+      menu: null,
+      panel: null,
       past: [],
       future: [],
     });
@@ -325,6 +364,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       savedArrowStyles: snap.savedArrowStyles.map((x) => ({ ...x })),
       selectedId: null,
       selectedIds: [],
+      selectedWaypoint: null,
       editing: null,
     });
   },
@@ -342,6 +382,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       order: [...prev.order],
       selectedId: null,
       selectedIds: [],
+      selectedWaypoint: null,
       editing: null,
       menu: null,
       panel: null,
@@ -361,6 +402,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       order: [...next.order],
       selectedId: null,
       selectedIds: [],
+      selectedWaypoint: null,
       editing: null,
       menu: null,
       panel: null,
@@ -940,6 +982,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         panel: null,
         selectedId: null,
         selectedIds: [],
+        selectedWaypoint: null,
         editing: null,
         rects: {},
         clipboard: null,
@@ -954,6 +997,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       rects: {},
       selectedId: null,
       selectedIds: [],
+      selectedWaypoint: null,
       editing: null,
       menu: null,
       panel: null,
@@ -976,6 +1020,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       rects: {},
       selectedId: null,
       selectedIds: [],
+      selectedWaypoint: null,
       editing: null,
       menu: null,
       panel: null,
@@ -1004,6 +1049,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       view: normalizeView(data.view),
       selectedId: null,
       selectedIds: [],
+      selectedWaypoint: null,
       editing: null,
       menu: null,
       panel: null,
@@ -1054,6 +1100,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       selectedId: id,
       selectedIds: id ? [id] : [],
+      selectedWaypoint: null,
     }),
 
   toggleSelection: (id) =>
@@ -1068,6 +1115,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         selectedId: alreadySelected
           ? selectedIds[selectedIds.length - 1] ?? null
           : id,
+        selectedWaypoint: null,
         menu: null,
         panel: null,
       };
@@ -1079,6 +1127,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       return {
         selectedIds,
         selectedId: selectedIds[selectedIds.length - 1] ?? null,
+        selectedWaypoint: null,
         editing: null,
         menu: null,
         panel: null,
@@ -1109,6 +1158,141 @@ export const useEditor = create<EditorState>((set, get) => ({
   setExportOffset: (p) => set({ exportOffset: p }),
 
   toggleUiHidden: () => set((s) => ({ uiHidden: !s.uiHidden })),
+
+  setSelectedWaypoint: (s) => set({ selectedWaypoint: s }),
+
+  insertWaypointAt: (arrowId, world) => {
+    const state = get();
+    const el = state.elements[arrowId];
+    if (!el || el.kind !== "arrow") return;
+    const arrow = el as ArrowElement;
+
+    // Берём именно видимый маршрут: если стрелка была автоматически
+    // искривлена, её изломы станут ручными точками поворота.
+    const layout = computeArrowLayouts(state.elements, state.rects).get(arrowId);
+    if (!layout) return;
+    const base = layout.points;
+
+    let click: Point;
+    if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
+      click = world;
+    } else {
+      // без координат клика — середина самого длинного сегмента
+      let bestIndex = 0;
+      let bestLength = -1;
+      for (let i = 0; i + 1 < base.length; i++) {
+        const length = Math.hypot(
+          base[i + 1].x - base[i].x,
+          base[i + 1].y - base[i].y
+        );
+        if (length > bestLength) {
+          bestLength = length;
+          bestIndex = i;
+        }
+      }
+      click = {
+        x: (base[bestIndex].x + base[bestIndex + 1].x) / 2,
+        y: (base[bestIndex].y + base[bestIndex + 1].y) / 2,
+      };
+    }
+
+    const insertion = suggestWaypointInsertion(base, click);
+    const existing = base.slice(1, -1).map((point) => ({
+      x: point.x - arrow.x,
+      y: point.y - arrow.y,
+    }));
+    const insertIndex = Math.max(0, Math.min(existing.length, insertion.index));
+    state.pushHistory();
+
+    const waypoints = [...existing];
+    waypoints.splice(insertIndex, 0, {
+      x: insertion.point.x - arrow.x,
+      y: insertion.point.y - arrow.y,
+    });
+
+    set((s) => ({
+      elements: {
+        ...s.elements,
+        [arrowId]: { ...(s.elements[arrowId] as ArrowElement), waypoints } as CanvasElement,
+      },
+      selectedWaypoint: { arrowId, index: insertIndex },
+      selectedId: arrowId,
+      selectedIds: [arrowId],
+      menu: null,
+    }));
+  },
+
+  updateWaypoint: (arrowId, index, world) => {
+    if (!Number.isFinite(world.x) || !Number.isFinite(world.y)) return;
+    set((s) => {
+      const el = s.elements[arrowId];
+      if (!el || el.kind !== "arrow") return s;
+      const arrow = el as ArrowElement;
+      if (!arrow.waypoints || index < 0 || index >= arrow.waypoints.length) return s;
+      const waypoints = [...arrow.waypoints];
+      waypoints[index] = { x: world.x - arrow.x, y: world.y - arrow.y };
+      return {
+        elements: { ...s.elements, [arrowId]: { ...arrow, waypoints } as CanvasElement },
+      };
+    });
+  },
+
+  removeWaypoint: (arrowId, index) => {
+    const state = get();
+    const el = state.elements[arrowId];
+    if (!el || el.kind !== "arrow") return;
+    const arrow = el as ArrowElement;
+    if (!arrow.waypoints || index < 0 || index >= arrow.waypoints.length) return;
+
+    state.pushHistory();
+    const waypoints = [...arrow.waypoints];
+    waypoints.splice(index, 1);
+
+    set((s) => {
+      const cur = s.elements[arrowId] as ArrowElement | undefined;
+      if (!cur) return s;
+      const updated: ArrowElement = {
+        ...cur,
+        waypoints: waypoints.length ? waypoints : undefined,
+      };
+      const selectedWaypoint =
+        s.selectedWaypoint?.arrowId === arrowId && s.selectedWaypoint.index === index
+          ? null
+          : s.selectedWaypoint &&
+              s.selectedWaypoint.arrowId === arrowId &&
+              s.selectedWaypoint.index > index
+            ? { arrowId, index: s.selectedWaypoint.index - 1 }
+            : s.selectedWaypoint;
+      const menu =
+        s.menu?.type === "arrow-waypoint" &&
+        s.menu.elementId === arrowId &&
+        s.menu.waypointIndex === index
+          ? null
+          : s.menu;
+      return {
+        elements: { ...s.elements, [arrowId]: updated as CanvasElement },
+        selectedWaypoint,
+        menu,
+      };
+    });
+  },
+
+  setLabelPlacement: (arrowId, t, side) => {
+    if (!Number.isFinite(t)) return;
+    const labelT = Math.max(0, Math.min(1, t));
+    const labelSide: 1 | -1 = side === -1 ? -1 : 1;
+    set((s) => {
+      const el = s.elements[arrowId];
+      if (!el || el.kind !== "arrow") return s;
+      if (el.labelT === labelT && (el.labelSide ?? 1) === labelSide) return s;
+      return {
+        elements: {
+          ...s.elements,
+          [arrowId]: { ...el, labelT, labelSide } as CanvasElement,
+        },
+      };
+    });
+  },
 }));
 
 /** Выборка сохраняемого среза для хранилища/файла */

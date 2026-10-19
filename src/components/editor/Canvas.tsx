@@ -15,7 +15,7 @@ import { CardView } from "./elements/CardElement";
 import { ArrowLayer } from "./elements/ArrowLayer";
 import { ImageView } from "./elements/ImageElement";
 import { TextView } from "./elements/TextElement";
-import { contentBBox, computeArrowGeometries } from "@/lib/editor/geometry";
+import { computeArrowLayouts, contentBBox } from "@/lib/editor/geometry";
 import { designPixels } from "@/lib/editor/design";
 import {
   DOUBLE_TAP_DELAY_MS,
@@ -113,6 +113,13 @@ export function Canvas() {
       ?.getAttribute("data-status-card-id");
     if (statusId) return `status:${statusId}`;
 
+    const waypointTarget = target.closest("[data-waypoint-arrow-id]");
+    const waypointArrowId = waypointTarget?.getAttribute("data-waypoint-arrow-id");
+    const waypointIndex = Number(waypointTarget?.getAttribute("data-waypoint-index"));
+    if (waypointArrowId && Number.isInteger(waypointIndex)) {
+      return `waypoint:${waypointArrowId}:${waypointIndex}`;
+    }
+
     const arrowTarget = target.closest("[data-arrow-id], [data-arrow-description]");
     const arrowId =
       arrowTarget?.getAttribute("data-arrow-id") ??
@@ -139,6 +146,26 @@ export function Canvas() {
       return;
     }
 
+    const waypointTarget = target.closest("[data-waypoint-arrow-id]");
+    const waypointArrowId = waypointTarget?.getAttribute("data-waypoint-arrow-id");
+    const waypointIndex = Number(waypointTarget?.getAttribute("data-waypoint-index"));
+    if (
+      waypointArrowId &&
+      state.elements[waypointArrowId]?.kind === "arrow" &&
+      Number.isInteger(waypointIndex)
+    ) {
+      if (!state.selectedIds.includes(waypointArrowId)) state.select(waypointArrowId);
+      state.setSelectedWaypoint({ arrowId: waypointArrowId, index: waypointIndex });
+      state.openMenu({
+        type: "arrow-waypoint",
+        screen,
+        world: screenToWorld(clientX, clientY),
+        elementId: waypointArrowId,
+        waypointIndex,
+      });
+      return;
+    }
+
     const arrowTarget = target.closest("[data-arrow-id], [data-arrow-description]");
     const arrowId =
       arrowTarget?.getAttribute("data-arrow-id") ??
@@ -148,7 +175,7 @@ export function Canvas() {
       state.openMenu({
         type: "arrow",
         screen,
-        world: { x: 0, y: 0 },
+        world: screenToWorld(clientX, clientY),
         elementId: arrowId,
       });
       return;
@@ -507,8 +534,8 @@ function exportBackgroundRect(
   elements: Record<string, CanvasElement>,
   rects: Record<string, { w: number; h: number }>
 ): React.CSSProperties {
-  const geometries = computeArrowGeometries(elements, rects);
-  const bbox = contentBBox(elements, rects, geometries);
+  const layouts = computeArrowLayouts(elements, rects);
+  const bbox = contentBBox(elements, rects, layouts);
   const exportPadding = designPixels("--p-20") * 2;
   return {
     left: bbox.x - exportPadding,

@@ -810,6 +810,14 @@
   stroke: var(--btn-gen);
   stroke-width: var(--cards-rel-stroke);
 }
+.arrow-handle--waypoint {
+  cursor: grab;
+  stroke-dasharray: var(--menus-stroke) var(--menus-stroke);
+}
+.arrow-handle--selected {
+  fill: var(--btn-gen);
+  stroke: var(--c-menus-bg);
+}
 
 /* ---------- Слайдер, scrollbar и фокус ---------- */
 .tslider {

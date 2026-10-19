@@ -165,6 +165,25 @@ function useCardItems(menu: MenuState): MenuItem[] {
 
 /* ---------------- Элементы меню стрелки ---------------- */
 
+function useWaypointItems(menu: MenuState): MenuItem[] {
+  const removeWaypoint = useEditor((s) => s.removeWaypoint);
+  const arrowId = menu.elementId;
+  const idx = menu.waypointIndex;
+  if (!arrowId || typeof idx !== "number") return [];
+  return [
+    {
+      label: "Удалить точку",
+      icon: MenuIcons.delete,
+      warn: true,
+      action: () => {
+        removeWaypoint(arrowId, idx);
+        useEditor.getState().openMenu(null);
+        useEditor.getState().setSelectedWaypoint(null);
+      },
+    },
+  ];
+}
+
 function useArrowItems(menu: MenuState): MenuItem[] {
   const elements = useEditor((s) => s.elements);
   const openPanel = useEditor((s) => s.openPanel);
@@ -172,6 +191,7 @@ function useArrowItems(menu: MenuState): MenuItem[] {
   const setEditing = useEditor((s) => s.setEditing);
   const removeElement = useEditor((s) => s.removeElement);
   const saveArrowStyleFrom = useEditor((s) => s.saveArrowStyleFrom);
+  const insertWaypointAt = useEditor((s) => s.insertWaypointAt);
 
   const arrow = menu.elementId
     ? (elements[menu.elementId] as ArrowElement | undefined)
@@ -186,6 +206,11 @@ function useArrowItems(menu: MenuState): MenuItem[] {
         openMenu(null);
         setEditing({ id: arrow.id, field: "label" });
       },
+    },
+    {
+      label: "Добавить точку поворота",
+      icon: MenuIcons.plus,
+      action: () => insertWaypointAt(arrow.id, menu.world),
     },
     {
       label: "Изменить стиль",
@@ -499,6 +524,7 @@ export function MenusHost() {
   const canvasItems = useCanvasItems(menu ?? { type: "canvas", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const cardItems = useCardItems(menu ?? { type: "card", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const arrowItems = useArrowItems(menu ?? { type: "arrow", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
+  const waypointItems = useWaypointItems(menu ?? { type: "arrow-waypoint", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const statusItems = useStatusItems(menu ?? { type: "status", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const settingsItems = useSettingsItems(menu ?? { type: "settings", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const imageItems = useSimpleItems(menu ?? { type: "image", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } }, "image");
@@ -529,6 +555,7 @@ export function MenusHost() {
   if (menu.type === "canvas") items = canvasItems;
   else if (menu.type === "card") items = cardItems;
   else if (menu.type === "arrow") items = arrowItems;
+  else if (menu.type === "arrow-waypoint") items = waypointItems;
   else if (menu.type === "status") items = statusItems;
   else if (menu.type === "settings") items = settingsItems;
   else if (menu.type === "image") items = imageItems;
