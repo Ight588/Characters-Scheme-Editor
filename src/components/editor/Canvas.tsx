@@ -30,6 +30,12 @@ const BG_REPEAT: Record<BgImageFit, string> = {
   fill: "no-repeat",
 };
 
+const configuredBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const basePath = configuredBasePath.endsWith("/")
+  ? configuredBasePath.slice(0, -1)
+  : configuredBasePath;
+const EMPTY_CANVAS_TILE_URL = `${basePath}/empty-canvas-tile.png`;
+
 export function Canvas() {
   const view = useEditor((s) => s.view);
   const order = useEditor((s) => s.order);
@@ -468,7 +474,10 @@ export function Canvas() {
     >
       {/* В обычном режиме фон покрывает viewport и всегда остаётся видимым. */}
       {isEmpty && interactive && !settings.bgImage && (
-        <div className="empty-canvas-background absolute inset-0 pointer-events-none" />
+        <div
+          className="empty-canvas-background absolute inset-0 pointer-events-none"
+          style={{ backgroundImage: `url("${EMPTY_CANVAS_TILE_URL}")` }}
+        />
       )}
       {settings.bgImage && interactive && (
         <div className="absolute inset-0 pointer-events-none" style={bgStyle} />
