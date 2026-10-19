@@ -35,6 +35,37 @@ export type ArrowHead = "triangle" | "line" | "none";
 export type ArrowEnds = "both" | "end" | "start" | "none";
 export type ArrowThickness = "thin" | "normal" | "thick";
 
+/** Грань карточки, к которой можно привязать конец стрелки. */
+export type CardEdge = "top" | "bottom" | "left" | "right";
+
+export const CARD_EDGES: CardEdge[] = ["top", "right", "bottom", "left"];
+
+export function isCardEdge(value: unknown): value is CardEdge {
+  return value === "top" || value === "bottom" || value === "left" || value === "right";
+}
+
+/**
+ * Ручная привязка конца стрелки к грани карточки.
+ * t ∈ [0, 1] — положение вдоль грани: 0 — начало (левый/верхний край),
+ * 1 — конец, 0.5 — середина. Без привязки стрелка, как и раньше,
+ * сама выбирает ближайшую грань и распределяется по ней.
+ */
+export type ArrowAnchor = {
+  edge: CardEdge;
+  t: number;
+};
+
+export function normalizeArrowAnchor(
+  anchor?: Partial<ArrowAnchor> | null
+): ArrowAnchor | undefined {
+  if (!anchor || !isCardEdge(anchor.edge)) return undefined;
+  const t = Number(anchor.t);
+  return {
+    edge: anchor.edge,
+    t: Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0.5,
+  };
+}
+
 export type ArrowElement = ElementBase & {
   kind: "arrow";
   /** id связанной карточки в начале, если есть */
@@ -45,6 +76,10 @@ export type ArrowElement = ElementBase & {
   fromPoint: Point;
   /** свободная точка конца */
   toPoint: Point;
+  /** Ручная привязка начала к конкретной грани карточки (иначе — автоматически). */
+  fromAnchor?: ArrowAnchor;
+  /** Ручная привязка конца к конкретной грани карточки (иначе — автоматически). */
+  toAnchor?: ArrowAnchor;
   /** Промежуточные точки поворота (относительно x,y). Пустой массив — прямая. */
   waypoints?: Point[];
   /**
