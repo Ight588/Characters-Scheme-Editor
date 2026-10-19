@@ -44,10 +44,21 @@
 }
 .empty-canvas-hint--touch { display: none; }
 
-/* Выбираем подсказку по типу доступного указателя, а не по ширине экрана. */
+/* Пустой холст использует репозиторную картинку по конкретному URL из public/. */
+.empty-canvas-background {
+  background-image: url("/empty-canvas-tile.png");
+  background-repeat: repeat;
+  background-position: center;
+}
+
+/* Выбираем подсказку и направление плитки по типу указателя, не ширине экрана. */
 @media (any-pointer: coarse) {
   .empty-canvas-hint--desktop { display: none; }
   .empty-canvas-hint--touch { display: inline; }
+  .empty-canvas-background {
+    background-repeat: repeat-x;
+    background-position: center top;
+  }
 }
 
 /* ---------- Верхняя панель и системные кнопки ---------- */
