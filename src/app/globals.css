@@ -46,7 +46,8 @@
 
 /* Пустой холст использует репозиторную картинку по конкретному URL из public/. */
 .empty-canvas-background {
-  background-image: url("/empty-canvas-tile.png");
+  background-image: url("empty-canvas-tile.png");
+  opacity: 0.2;
   background-repeat: repeat;
   background-position: center;
 }
