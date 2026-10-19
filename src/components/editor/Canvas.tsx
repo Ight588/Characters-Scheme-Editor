@@ -467,6 +467,16 @@ export function Canvas() {
       onContextMenu={onContextMenu}
     >
       {/* В обычном режиме фон покрывает viewport и всегда остаётся видимым. */}
+      {isEmpty && interactive && !settings.bgImage && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: 'url("/empty-canvas-tile.png")',
+            backgroundRepeat: "repeat",
+            backgroundPosition: "center",
+          }}
+        />
+      )}
       {settings.bgImage && interactive && (
         <div className="absolute inset-0 pointer-events-none" style={bgStyle} />
       )}
@@ -512,12 +522,12 @@ export function Canvas() {
       {isEmpty && interactive && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="empty-canvas-hint no-select">
-            <span className="hidden sm:inline">
+            <span className="empty-canvas-hint--desktop">
               Нажмите правую кнопку мыши,
               <br />
               чтобы начать...
             </span>
-            <span className="sm:hidden">
+            <span className="empty-canvas-hint--touch">
               Зажмите холст,
               <br />
               чтобы начать...

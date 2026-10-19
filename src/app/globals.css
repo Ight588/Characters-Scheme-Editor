@@ -42,6 +42,13 @@
   line-height: 1.375;
   text-align: center;
 }
+.empty-canvas-hint--touch { display: none; }
+
+/* Выбираем подсказку по типу доступного указателя, а не по ширине экрана. */
+@media (any-pointer: coarse) {
+  .empty-canvas-hint--desktop { display: none; }
+  .empty-canvas-hint--touch { display: inline; }
+}
 
 /* ---------- Верхняя панель и системные кнопки ---------- */
 .editor-title {
