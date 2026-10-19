@@ -24,6 +24,7 @@ import {
   FileDown,
   Eraser,
   Plus,
+  Anchor,
 } from "lucide-react";
 import { useEditor, MenuState } from "@/lib/editor/store";
 import { designPixels } from "@/lib/editor/design";
@@ -47,7 +48,7 @@ export type MenuItem = {
   icon?: React.ReactNode;
   warn?: boolean;
   action?: () => void;
-  sub?: "cards" | "statuses" | "styles" | "link" | "group" | "unlink";
+  sub?: "cards" | "statuses" | "styles" | "link" | "group" | "unlink" | "anchor-from" | "anchor-to";
   subTitle?: string;
   disabled?: boolean;
 };
@@ -74,6 +75,7 @@ export const MenuIcons = {
   share: <FileDown className="menu-icon" />,
   clear: <Eraser className="menu-icon" />,
   plus: <Plus className="menu-icon" />,
+  anchor: <Anchor className="menu-icon" />,
 };
 
 /* ---------------------- Контейнер меню ---------------------- */

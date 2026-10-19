@@ -13,7 +13,10 @@ import {
 } from "@/lib/editor/types";
 import { designPixels } from "@/lib/editor/design";
 import {
+  ANCHOR_DETACH_DISTANCE,
   ArrowLayout,
+  Rect,
+  anchorFromPoint,
   closestPointOnPolyline,
   computeArrowLayouts,
   distToRect,
@@ -196,6 +199,11 @@ function ArrowShape({
     if (!useEditor.getState().selectedIds.includes(arrow.id)) select(arrow.id);
     dragState.current = { moved: false, pushed: false };
 
+    const attachedCardId = end === "from" ? arrow.fromCard : arrow.toCard;
+    let attached = Boolean(
+      attachedCardId && useEditor.getState().elements[attachedCardId]?.kind === "card"
+    );
+
     const move = (ev: PointerEvent) => {
       const st = dragState.current;
       if (!st) return;
@@ -205,42 +213,102 @@ function ArrowShape({
         st.pushed = true;
         st.moved = true;
       }
-      const cur = useEditor.getState().elements[arrow.id] as ArrowElement | undefined;
+      const state = useEditor.getState();
+      const cur = state.elements[arrow.id] as ArrowElement | undefined;
       if (!cur) return;
+
+      // Привязанный кончик скользит по грани карточки, пока его не увели
+      // достаточно далеко — тогда он отвязывается, как и раньше.
+      const cardElement = attachedCardId ? state.elements[attachedCardId] : undefined;
+      const cardRect =
+        cardElement?.kind === "card" ? getCardRect(cardElement, state.rects) : null;
+      if (attached && cardRect) {
+        if (distToRect(world, cardRect) <= ANCHOR_DETACH_DISTANCE) {
+          const currentAnchor = end === "from" ? cur.fromAnchor : cur.toAnchor;
+          const anchor = anchorFromPoint(cardRect, world, currentAnchor?.edge);
+          state.updateElement(
+            arrow.id,
+            (end === "from" ? { fromAnchor: anchor } : { toAnchor: anchor }) as Partial<ArrowElement>
+          );
+          return;
+        }
+        attached = false;
+        state.updateElement(
+          arrow.id,
+          (end === "from"
+            ? { fromCard: undefined, fromAnchor: undefined }
+            : { toCard: undefined, toAnchor: undefined }) as Partial<ArrowElement>
+        );
+      }
+
+      const free = useEditor.getState().elements[arrow.id] as ArrowElement | undefined;
+      if (!free) return;
       const patch: Partial<ArrowElement> =
         end === "from"
-          ? { fromCard: undefined, fromPoint: { x: world.x - cur.x, y: world.y - cur.y } }
-          : { toCard: undefined, toPoint: { x: world.x - cur.x, y: world.y - cur.y } };
+          ? {
+              fromCard: undefined,
+              fromAnchor: undefined,
+              fromPoint: { x: world.x - free.x, y: world.y - free.y },
+            }
+          : {
+              toCard: undefined,
+              toAnchor: undefined,
+              toPoint: { x: world.x - free.x, y: world.y - free.y },
+            };
       useEditor.getState().updateElement(arrow.id, patch);
+    };
+
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
     };
 
     const up = (ev: PointerEvent) => {
       const st = dragState.current;
       dragState.current = null;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
+      finish();
       if (!st?.moved) return;
+
+      // Кончик остался на своей карточке — привязка уже обновлена при движении.
+      if (attached && attachedCardId) return;
+
       const world = worldFromEvent(ev);
       const state = useEditor.getState();
       let bestId: string | null = null;
+      let bestRect: Rect | null = null;
       let bestDist = designPixels("--p-24") + designPixels("--p-4");
       for (const el of Object.values(state.elements)) {
         if (el.kind !== "card") continue;
-        const dist = distToRect(world, getCardRect(el as CardElement, state.rects));
+        const rect = getCardRect(el as CardElement, state.rects);
+        const dist = distToRect(world, rect);
         if (dist < bestDist) {
           bestDist = dist;
           bestId = el.id;
+          bestRect = rect;
         }
       }
-      if (bestId && bestId !== arrow.id) {
+      if (bestId) {
+        const anchor = bestRect ? anchorFromPoint(bestRect, world) : undefined;
         useEditor
           .getState()
-          .updateElement(arrow.id, end === "from" ? { fromCard: bestId } : { toCard: bestId });
+          .updateElement(
+            arrow.id,
+            (end === "from"
+              ? { fromCard: bestId, fromAnchor: anchor }
+              : { toCard: bestId, toAnchor: anchor }) as Partial<ArrowElement>
+          );
       }
+    };
+
+    const cancel = () => {
+      dragState.current = null;
+      finish();
     };
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
   };
 
   const beginWaypointDrag = (e: React.PointerEvent, index: number) => {
@@ -336,7 +404,10 @@ function ArrowShape({
             className="arrow-handle"
             style={{ cursor: "grab" }}
             onPointerDown={(e) => beginEndDrag(e, "from")}
-          />
+            onContextMenu={openArrowMenu}
+          >
+            <title>Потяните вдоль грани карточки или отвяжите конец</title>
+          </circle>
           <circle
             cx={last.x}
             cy={last.y}
@@ -344,7 +415,10 @@ function ArrowShape({
             className="arrow-handle"
             style={{ cursor: "grab" }}
             onPointerDown={(e) => beginEndDrag(e, "to")}
-          />
+            onContextMenu={openArrowMenu}
+          >
+            <title>Потяните вдоль грани карточки или отвяжите конец</title>
+          </circle>
           {waypointWorldPoints.map((point, index) => {
             const isSelected =
               selectedWaypoint?.arrowId === arrow.id && selectedWaypoint.index === index;

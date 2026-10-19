@@ -7,8 +7,11 @@ import { toast } from "sonner";
 import { useEditor, MenuState } from "@/lib/editor/store";
 import {
   DEFAULT_STATUS_COLOR,
+  CARD_EDGES,
+  CardEdge,
   CardElement,
   ArrowElement,
+  ArrowAnchor,
 } from "@/lib/editor/types";
 import { requestImageAt } from "@/lib/editor/filepicker";
 import { ContextMenu, MenuIcons, MenuItem, useFileActions } from "./ContextMenu";
@@ -184,6 +187,13 @@ function useWaypointItems(menu: MenuState): MenuItem[] {
   ];
 }
 
+const EDGE_LABELS: Record<CardEdge, string> = {
+  top: "Сверху",
+  right: "Справа",
+  bottom: "Снизу",
+  left: "Слева",
+};
+
 function useArrowItems(menu: MenuState): MenuItem[] {
   const elements = useEditor((s) => s.elements);
   const openPanel = useEditor((s) => s.openPanel);
@@ -198,7 +208,7 @@ function useArrowItems(menu: MenuState): MenuItem[] {
     : undefined;
   if (!arrow) return [];
 
-  return [
+  const items: MenuItem[] = [
     {
       label: arrow.label ? "Редактировать описание" : "Добавить описание",
       icon: MenuIcons.text,
@@ -212,6 +222,27 @@ function useArrowItems(menu: MenuState): MenuItem[] {
       icon: MenuIcons.plus,
       action: () => insertWaypointAt(arrow.id, menu.world),
     },
+  ];
+
+  // Выбор грани доступен только для концов, привязанных к карточке.
+  if (arrow.fromCard) {
+    items.push({
+      label: `Грань начала: ${arrow.fromAnchor ? EDGE_LABELS[arrow.fromAnchor.edge].toLowerCase() : "авто"}`,
+      icon: MenuIcons.anchor,
+      sub: "anchor-from" as const,
+      subTitle: "Грань начала",
+    });
+  }
+  if (arrow.toCard) {
+    items.push({
+      label: `Грань конца: ${arrow.toAnchor ? EDGE_LABELS[arrow.toAnchor.edge].toLowerCase() : "авто"}`,
+      icon: MenuIcons.anchor,
+      sub: "anchor-to" as const,
+      subTitle: "Грань конца",
+    });
+  }
+
+  items.push(
     {
       label: "Изменить стиль",
       icon: MenuIcons.paint,
@@ -236,8 +267,50 @@ function useArrowItems(menu: MenuState): MenuItem[] {
       icon: MenuIcons.delete,
       warn: true,
       action: () => removeElement(arrow.id),
+    }
+  );
+  return items;
+}
+
+/** Подменю выбора грани карточки для начала или конца стрелки. */
+function useAnchorEdgeItems(menu: MenuState): MenuItem[] {
+  const elements = useEditor((s) => s.elements);
+  const setArrowAnchor = useEditor((s) => s.setArrowAnchor);
+  const openMenu = useEditor((s) => s.openMenu);
+
+  const arrow = menu.elementId
+    ? (elements[menu.elementId] as ArrowElement | undefined)
+    : undefined;
+  const isFrom = menu.sub === "anchor-from";
+  const end: "from" | "to" = isFrom ? "from" : "to";
+  const cardId = arrow ? (isFrom ? arrow.fromCard : arrow.toCard) : undefined;
+  if (!arrow || !menu.sub || !cardId) return [];
+
+  const current: ArrowAnchor | undefined = isFrom ? arrow.fromAnchor : arrow.toAnchor;
+  const back: MenuItem = {
+    label: `◀ ${menu.subTitle ?? "Назад"}`,
+    action: () => openMenu({ ...menu, sub: null, subTitle: undefined }),
+  };
+  const auto: MenuItem = {
+    label: `Автоматически${current ? "" : " ✓"}`,
+    action: () => {
+      setArrowAnchor(arrow.id, end, null);
+      openMenu(null);
     },
-  ];
+  };
+
+  const edges: MenuItem[] = CARD_EDGES.map((edge) => ({
+    label: `${EDGE_LABELS[edge]}${current?.edge === edge ? " ✓" : ""}`,
+    action: () => {
+      setArrowAnchor(arrow.id, end, {
+        edge,
+        t: current?.edge === edge ? current.t : 0.5,
+      });
+      openMenu(null);
+    },
+  }));
+
+  return [back, auto, ...edges];
 }
 
 /* ---------------- Элементы меню статуса ---------------- */
@@ -524,6 +597,7 @@ export function MenusHost() {
   const canvasItems = useCanvasItems(menu ?? { type: "canvas", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const cardItems = useCardItems(menu ?? { type: "card", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const arrowItems = useArrowItems(menu ?? { type: "arrow", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
+  const anchorEdgeItems = useAnchorEdgeItems(menu ?? { type: "arrow", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const waypointItems = useWaypointItems(menu ?? { type: "arrow-waypoint", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const statusItems = useStatusItems(menu ?? { type: "status", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
   const settingsItems = useSettingsItems(menu ?? { type: "settings", screen: { x: 0, y: 0 }, world: { x: 0, y: 0 } });
@@ -554,7 +628,12 @@ export function MenusHost() {
   let items: MenuItem[] = [];
   if (menu.type === "canvas") items = canvasItems;
   else if (menu.type === "card") items = cardItems;
-  else if (menu.type === "arrow") items = arrowItems;
+  else if (menu.type === "arrow") {
+    items =
+      menu.sub === "anchor-from" || menu.sub === "anchor-to"
+        ? anchorEdgeItems
+        : arrowItems;
+  }
   else if (menu.type === "arrow-waypoint") items = waypointItems;
   else if (menu.type === "status") items = statusItems;
   else if (menu.type === "settings") items = settingsItems;

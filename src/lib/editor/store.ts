@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import {
+  ArrowAnchor,
   ArrowElement,
   CanvasElement,
   CanvasSettings,
@@ -19,6 +20,7 @@ import {
   makeArrow,
   makeCard,
   makeText,
+  normalizeArrowAnchor,
   normalizeCanvasSettings,
   normalizePoint,
   normalizeView,
@@ -44,7 +46,17 @@ export type MenuState = {
   world: Point; // точка в мировых координатах
   elementId?: string;
   waypointIndex?: number;
-  sub?: "cards" | "statuses" | "styles" | "link" | "group" | "unlink" | "status-color" | null;
+  sub?:
+    | "cards"
+    | "statuses"
+    | "styles"
+    | "link"
+    | "group"
+    | "unlink"
+    | "status-color"
+    | "anchor-from"
+    | "anchor-to"
+    | null;
   subTitle?: string;
 };
 
@@ -162,6 +174,11 @@ type EditorState = {
   updateWaypoint: (arrowId: string, index: number, world: Point) => void;
   removeWaypoint: (arrowId: string, index: number) => void;
   setLabelPlacement: (arrowId: string, t: number, side: 1 | -1) => void;
+  setArrowAnchor: (
+    arrowId: string,
+    end: "from" | "to",
+    anchor: ArrowAnchor | null
+  ) => void;
 };
 
 const MAX_HISTORY = 60;
@@ -202,10 +219,14 @@ function normalizeCanvasElement(el: CanvasElement): CanvasElement {
         : undefined;
     const labelSide =
       arrow.labelSide === 1 || arrow.labelSide === -1 ? arrow.labelSide : undefined;
+    const fromAnchor = normalizeArrowAnchor(arrow.fromAnchor);
+    const toAnchor = normalizeArrowAnchor(arrow.toAnchor);
     return {
       ...base,
       fromPoint: normalizePoint(base.fromPoint),
       toPoint: normalizePoint(base.toPoint),
+      fromAnchor,
+      toAnchor,
       waypoints: waypoints.length ? waypoints : undefined,
       labelT,
       labelSide,
@@ -269,6 +290,8 @@ function cloneCanvasElement(element: CanvasElement): CanvasElement {
       ...element,
       fromPoint: { ...element.fromPoint },
       toPoint: { ...element.toPoint },
+      ...(element.fromAnchor ? { fromAnchor: { ...element.fromAnchor } } : {}),
+      ...(element.toAnchor ? { toAnchor: { ...element.toAnchor } } : {}),
       ...(element.waypoints ? { waypoints: element.waypoints.map((p) => ({ ...p })) } : {}),
       ...(element.labelT !== undefined ? { labelT: element.labelT } : {}),
       ...(element.labelSide !== undefined ? { labelSide: element.labelSide } : {}),
@@ -698,6 +721,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (copy.kind === "arrow") {
       copy.fromCard = undefined;
       copy.toCard = undefined;
+      copy.fromAnchor = undefined;
+      copy.toAnchor = undefined;
       copy.fromPoint = { x: 0, y: 0 };
       copy.toPoint = { x: 200, y: 0 };
     }
@@ -1274,6 +1299,37 @@ export const useEditor = create<EditorState>((set, get) => ({
         selectedWaypoint,
         menu,
       };
+    });
+  },
+
+  setArrowAnchor: (arrowId, end, anchor) => {
+    const state = get();
+    const el = state.elements[arrowId];
+    if (!el || el.kind !== "arrow") return;
+    const arrow = el as ArrowElement;
+    const cardId = end === "from" ? arrow.fromCard : arrow.toCard;
+    if (!cardId) return;
+
+    const normalized = anchor ? normalizeArrowAnchor(anchor) : undefined;
+    const key = end === "from" ? "fromAnchor" : "toAnchor";
+    const current = arrow[key];
+    if (
+      normalized &&
+      current &&
+      current.edge === normalized.edge &&
+      Math.abs(current.t - normalized.t) < 0.0001
+    ) {
+      return;
+    }
+    if (!normalized && !current) return;
+
+    state.pushHistory();
+    set((s) => {
+      const cur = s.elements[arrowId];
+      if (!cur || cur.kind !== "arrow") return s;
+      const updated = { ...cur, [key]: normalized } as ArrowElement;
+      if (!normalized) delete updated[key];
+      return { elements: { ...s.elements, [arrowId]: updated as CanvasElement } };
     });
   },
 

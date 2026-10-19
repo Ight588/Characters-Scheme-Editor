@@ -1,20 +1,29 @@
 import {
+  ArrowAnchor,
   ArrowElement,
   CanvasElement,
+  CardEdge,
   CardElement,
   ImageElement,
   Point,
   TextElement,
   CARD_COMPACT_MAX_WIDTH,
+  CARD_EDGES,
   CARD_EXPANDED_WIDTH,
+  normalizeArrowAnchor,
 } from "./types";
 
 export type Size = { w: number; h: number };
 export type Rect = { x: number; y: number; w: number; h: number };
-export type Edge = "top" | "bottom" | "left" | "right";
+export type Edge = CardEdge;
 
 /** Зазор между границей карточки и привязанным концом стрелки. */
 export const CARD_ARROW_GAP = 12;
+/**
+ * Насколько далеко нужно увести кончик привязанной стрелки от карточки,
+ * чтобы он отвязался и стал свободным.
+ */
+export const ANCHOR_DETACH_DISTANCE = CARD_ARROW_GAP * 2 + 8;
 /** Зазор между линией стрелки и её описанием. */
 export const ARROW_DESCRIPTION_GAP = 8;
 
@@ -152,6 +161,47 @@ export function offsetFromEdge(point: Point, edge: Edge, gap = CARD_ARROW_GAP): 
   }
 }
 
+/**
+ * Ближайшая к точке грань прямоугольника и положение вдоль неё.
+ * Используется при перетаскивании кончика стрелки по грани карточки.
+ * `preferredEdge` удерживает текущую грань рядом с углами, чтобы кончик
+ * не «дёргался» между соседними сторонами.
+ */
+export function anchorFromPoint(rect: Rect, point: Point, preferredEdge?: Edge): ArrowAnchor {
+  const candidates: { edge: Edge; t: number; distance: number }[] = [];
+  for (const edge of CARD_EDGES) {
+    const horizontal = edge === "top" || edge === "bottom";
+    const t = horizontal
+      ? Math.min(1, Math.max(0, (point.x - rect.x) / Math.max(rect.w, 1)))
+      : Math.min(1, Math.max(0, (point.y - rect.y) / Math.max(rect.h, 1)));
+    const anchor = edgeAnchor(rect, edge, t);
+    candidates.push({
+      edge,
+      t,
+      distance: Math.hypot(point.x - anchor.x, point.y - anchor.y),
+    });
+  }
+
+  let best = candidates[0];
+  for (const candidate of candidates) {
+    if (candidate.distance < best.distance - 0.5) best = candidate;
+  }
+  if (preferredEdge) {
+    const preferred = candidates.find((candidate) => candidate.edge === preferredEdge);
+    if (preferred && preferred.distance <= best.distance + 2) best = preferred;
+  }
+  return { edge: best.edge, t: best.t };
+}
+
+/** Мировая точка привязки конца стрелки к грани карточки. */
+export function anchoredPoint(rect: Rect, anchor: ArrowAnchor): Point {
+  const normalized = normalizeArrowAnchor(anchor) ?? { edge: "top", t: 0.5 };
+  return offsetFromEdge(
+    edgeAnchor(rect, normalized.edge, normalized.t),
+    normalized.edge
+  );
+}
+
 export function rectCenter(rect: Rect): Point {
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
@@ -168,9 +218,47 @@ export function distToRect(point: Point, rect: Rect): number {
 export type ArrowGeometry = { from: Point; to: Point };
 
 /**
+ * Распределяет автоматические привязки по грани, не задевая ручные.
+ * Ручные доли (`reserved`) остаются на месте, автоматические получают
+ * ближайшие к равномерным позиции с минимальным зазором.
+ */
+function distributeAnchorTs(reserved: number[], count: number): number[] {
+  if (count <= 0) return [];
+  // Для большого числа связей зазор уменьшается, чтобы сохранить прежнее
+  // равномерное распределение по всей грани.
+  const MARGIN = Math.min(0.08, 0.7 / (count + 1));
+  const taken = reserved
+    .filter((t) => Number.isFinite(t))
+    .map((t) => Math.max(0, Math.min(1, t)));
+  const result: number[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const ideal = (i + 1) / (count + 1);
+    const lowerBound = i > 0 ? result[i - 1] + MARGIN : 0.02;
+    let best = ideal;
+    let bestScore = Infinity;
+    for (let step = 0; step <= 96; step += 1) {
+      const candidate = 0.02 + (step / 96) * 0.96;
+      if (candidate < lowerBound) continue;
+      if (taken.some((t) => Math.abs(t - candidate) < MARGIN)) continue;
+      const score = Math.abs(candidate - ideal);
+      if (score < bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+    result.push(best);
+    taken.push(best);
+  }
+  return result;
+}
+
+/**
  * Вычисляет фактические точки стрелок.
- * Конец, привязанный к карточке, располагается у ближайшей грани с зазором 12 px;
- * несколько связей на одной грани распределяются равномерно.
+ * По умолчанию конец, привязанный к карточке, располагается у ближайшей грани
+ * с зазором 12 px, а несколько связей на одной грани распределяются равномерно.
+ * Если у конца задан `fromAnchor`/`toAnchor`, он ставится в выбранную точку
+ * выбранной грани; автоматические привязки при этом обходят ручные.
  */
 export function computeArrowGeometries(
   elements: Record<string, CanvasElement>,
@@ -179,12 +267,16 @@ export function computeArrowGeometries(
   const arrows = Object.values(elements).filter(
     (el): el is ArrowElement => el.kind === "arrow"
   );
+  const cards = new Map<string, CardElement>();
+  for (const el of Object.values(elements)) {
+    if (el.kind === "card") cards.set(el.id, el);
+  }
 
   // грубые точки (центры карточек / свободные точки)
   const rough = new Map<string, { from: Point; to: Point }>();
   for (const a of arrows) {
-    const fromCard = a.fromCard ? (elements[a.fromCard] as CardElement | undefined) : undefined;
-    const toCard = a.toCard ? (elements[a.toCard] as CardElement | undefined) : undefined;
+    const fromCard = a.fromCard ? cards.get(a.fromCard) : undefined;
+    const toCard = a.toCard ? cards.get(a.toCard) : undefined;
     const from: Point = fromCard
       ? rectCenter(getCardRect(fromCard, rects))
       : { x: a.x + a.fromPoint.x, y: a.y + a.fromPoint.y };
@@ -194,27 +286,65 @@ export function computeArrowGeometries(
     rough.set(a.id, { from, to });
   }
 
-  // заявки на привязку: cardId → список {arrowId, end, target}
+  // ручные привязки: cardId → грань → занятые доли
+  const reserved = new Map<string, Map<Edge, number[]>>();
+  const reserve = (cardId: string, anchor: ArrowAnchor) => {
+    let byEdge = reserved.get(cardId);
+    if (!byEdge) {
+      byEdge = new Map();
+      reserved.set(cardId, byEdge);
+    }
+    const list = byEdge.get(anchor.edge) ?? [];
+    list.push(anchor.t);
+    byEdge.set(anchor.edge, list);
+  };
+
+  const anchors = new Map<string, { from?: Point; to?: Point }>();
+  const setAnchor = (arrowId: string, end: "from" | "to", point: Point) => {
+    const rec = anchors.get(arrowId) ?? {};
+    rec[end] = point;
+    anchors.set(arrowId, rec);
+  };
+
+  const manual = new Map<string, { from: boolean; to: boolean }>();
+  const isManual = (arrowId: string, end: "from" | "to") =>
+    Boolean(manual.get(arrowId)?.[end]);
+
+  for (const a of arrows) {
+    const fromCard = a.fromCard ? cards.get(a.fromCard) : undefined;
+    const toCard = a.toCard ? cards.get(a.toCard) : undefined;
+    const fromAnchor = fromCard ? normalizeArrowAnchor(a.fromAnchor) : undefined;
+    const toAnchor = toCard ? normalizeArrowAnchor(a.toAnchor) : undefined;
+    if (fromAnchor && fromCard) {
+      setAnchor(a.id, "from", anchoredPoint(getCardRect(fromCard, rects), fromAnchor));
+      reserve(fromCard.id, fromAnchor);
+      manual.set(a.id, { ...(manual.get(a.id) ?? { from: false, to: false }), from: true });
+    }
+    if (toAnchor && toCard) {
+      setAnchor(a.id, "to", anchoredPoint(getCardRect(toCard, rects), toAnchor));
+      reserve(toCard.id, toAnchor);
+      manual.set(a.id, { ...(manual.get(a.id) ?? { from: false, to: false }), to: true });
+    }
+  }
+
+  // заявки на автоматическую привязку: cardId → список {arrowId, end, target}
   const requests = new Map<string, { arrowId: string; end: "from" | "to"; target: Point }[]>();
   for (const a of arrows) {
     const r = rough.get(a.id)!;
-    if (a.fromCard && elements[a.fromCard]) {
+    if (a.fromCard && cards.has(a.fromCard) && !isManual(a.id, "from")) {
       const list = requests.get(a.fromCard) ?? [];
       list.push({ arrowId: a.id, end: "from", target: r.to });
       requests.set(a.fromCard, list);
     }
-    if (a.toCard && elements[a.toCard]) {
+    if (a.toCard && cards.has(a.toCard) && !isManual(a.id, "to")) {
       const list = requests.get(a.toCard) ?? [];
       list.push({ arrowId: a.id, end: "to", target: r.from });
       requests.set(a.toCard, list);
     }
   }
 
-  // точки привязки
-  const anchors = new Map<string, { from?: Point; to?: Point }>();
-
   for (const [cardId, list] of requests) {
-    const card = elements[cardId] as CardElement | undefined;
+    const card = cards.get(cardId);
     if (!card) continue;
     const rect = getCardRect(card, rects);
 
@@ -227,19 +357,16 @@ export function computeArrowGeometries(
       byEdge.set(edge, arr);
     }
 
+    const cardReserved = reserved.get(cardId);
     for (const [edge, arr] of byEdge) {
       // сортировка вдоль грани, чтобы связи не пересекались
       const horizontal = edge === "top" || edge === "bottom";
       const sorted = [...arr].sort((p, q) =>
         horizontal ? p.target.x - q.target.x : p.target.y - q.target.y
       );
+      const ts = distributeAnchorTs(cardReserved?.get(edge) ?? [], sorted.length);
       sorted.forEach((req, i) => {
-        const t = (i + 1) / (sorted.length + 1);
-        const edgePoint = edgeAnchor(rect, edge, t);
-        const point = offsetFromEdge(edgePoint, edge);
-        const rec = anchors.get(req.arrowId) ?? {};
-        rec[req.end] = point;
-        anchors.set(req.arrowId, rec);
+        setAnchor(req.arrowId, req.end, offsetFromEdge(edgeAnchor(rect, edge, ts[i]), edge));
       });
     }
   }
