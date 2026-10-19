@@ -44,9 +44,8 @@
 }
 .empty-canvas-hint--touch { display: none; }
 
-/* Пустой холст использует репозиторную картинку по конкретному URL из public/. */
+/* Картинка задаётся компонентом с учётом basePath статического экспорта. */
 .empty-canvas-background {
-  background-image: url("empty-canvas-tile.png");
   opacity: 0.2;
   background-repeat: repeat;
   background-position: center;
