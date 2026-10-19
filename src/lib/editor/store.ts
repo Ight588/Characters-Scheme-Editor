@@ -54,8 +54,6 @@ export type MenuState = {
     | "group"
     | "unlink"
     | "status-color"
-    | "anchor-from"
-    | "anchor-to"
     | null;
   subTitle?: string;
 };
@@ -173,6 +171,7 @@ type EditorState = {
   insertWaypointAt: (arrowId: string, world?: Point) => void;
   updateWaypoint: (arrowId: string, index: number, world: Point) => void;
   removeWaypoint: (arrowId: string, index: number) => void;
+  resetArrowPosition: (arrowId: string) => void;
   setLabelPlacement: (arrowId: string, t: number, side: 1 | -1) => void;
   setArrowAnchor: (
     arrowId: string,
@@ -1298,6 +1297,26 @@ export const useEditor = create<EditorState>((set, get) => ({
         elements: { ...s.elements, [arrowId]: updated as CanvasElement },
         selectedWaypoint,
         menu,
+      };
+    });
+  },
+
+  resetArrowPosition: (arrowId) => {
+    const state = get();
+    const element = state.elements[arrowId];
+    if (!element || element.kind !== "arrow") return;
+    const arrow = element as ArrowElement;
+    if (!arrow.waypoints?.length) return;
+
+    state.pushHistory();
+    set((current) => {
+      const existing = current.elements[arrowId];
+      if (!existing || existing.kind !== "arrow") return current;
+      const updated = { ...existing, waypoints: undefined } as ArrowElement;
+      return {
+        elements: { ...current.elements, [arrowId]: updated as CanvasElement },
+        selectedWaypoint:
+          current.selectedWaypoint?.arrowId === arrowId ? null : current.selectedWaypoint,
       };
     });
   },
