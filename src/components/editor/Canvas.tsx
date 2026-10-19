@@ -468,14 +468,7 @@ export function Canvas() {
     >
       {/* В обычном режиме фон покрывает viewport и всегда остаётся видимым. */}
       {isEmpty && interactive && !settings.bgImage && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: 'url("/empty-canvas-tile.png")',
-            backgroundRepeat: "repeat",
-            backgroundPosition: "center",
-          }}
-        />
+        <div className="empty-canvas-background absolute inset-0 pointer-events-none" />
       )}
       {settings.bgImage && interactive && (
         <div className="absolute inset-0 pointer-events-none" style={bgStyle} />
