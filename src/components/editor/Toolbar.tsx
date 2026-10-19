@@ -86,8 +86,8 @@ export function Toolbar() {
 
   return (
     <div className="absolute top-0 left-0 right-0 z-40 flex flex-col items-center justify-between gap-0 no-select pointer-events-none p-[var(--p-16)] sm:flex-row sm:flex-wrap sm:items-start sm:gap-[var(--p-8)] sm:p-[var(--p-20)] md:p-[var(--p-24)]">
-      {/* Заголовок: на мобильных занимает всю ширину под кнопками */}
-      <div className="order-2 mt-[var(--p-24)] w-full min-w-0 flex-none pointer-events-auto text-center sm:order-1 sm:mt-0 sm:w-auto sm:flex-1 sm:basis-[calc(var(--cards-dec-width)-var(--comp-pad-hor)*2)] sm:pr-[calc(var(--comp-pad-hor)+var(--cards-rel-stroke))] sm:text-left">
+      {/* Заголовок остаётся сверху на мобильных, кнопки закреплены у нижнего края экрана. */}
+      <div className="order-1 mt-0 w-full min-w-0 flex-none pointer-events-auto text-center sm:order-1 sm:mt-0 sm:w-auto sm:flex-1 sm:basis-[calc(var(--cards-dec-width)-var(--comp-pad-hor)*2)] sm:pr-[calc(var(--comp-pad-hor)+var(--cards-rel-stroke))] sm:text-left">
         {isEditingTitle ? (
           <div
             key="title-editor"
@@ -154,7 +154,7 @@ export function Toolbar() {
       {/* Кнопки */}
       <div
         aria-hidden={uiHidden}
-        className={`order-1 mx-auto flex w-full max-w-full flex-row flex-wrap items-center justify-center gap-[var(--p-6)] sm:order-2 sm:ml-auto sm:mr-0 sm:w-auto sm:justify-end sm:gap-[var(--p-8)] ${
+        className={`order-2 fixed bottom-[var(--p-16)] left-0 right-0 z-40 mx-auto flex w-full max-w-full flex-row flex-wrap items-center justify-center gap-[var(--p-6)] px-[var(--p-16)] sm:static sm:order-2 sm:z-auto sm:ml-auto sm:mr-0 sm:w-auto sm:px-0 sm:justify-end sm:gap-[var(--p-8)] ${
           uiHidden ? "invisible pointer-events-none" : "pointer-events-auto"
         }`}
       >

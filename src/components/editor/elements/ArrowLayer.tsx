@@ -71,6 +71,55 @@ function headPolygons(
   return <polygon points={pts} fill={color} />;
 }
 
+const WAYPOINT_SNAP_ANGLES = [
+  0, 30, 45, 60, 90, 120, 135, 150,
+  180, 210, 225, 240, 270, 300, 315, 330,
+].map((degrees) => (degrees * Math.PI) / 180);
+const WAYPOINT_SNAP_CAPTURE = (5 * Math.PI) / 180;
+const WAYPOINT_SNAP_RELEASE = (9 * Math.PI) / 180;
+
+function snapWaypointToAngle(
+  point: Point,
+  origin: Point,
+  snappedAngle: number | null
+): { point: Point; angle: number | null } {
+  const dx = point.x - origin.x;
+  const dy = point.y - origin.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 0.001) return { point, angle: null };
+  const angle = Math.atan2(dy, dx);
+  const angleDifference = (a: number, b: number) =>
+    Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+
+  if (snappedAngle !== null && angleDifference(angle, snappedAngle) <= WAYPOINT_SNAP_RELEASE) {
+    return {
+      point: {
+        x: origin.x + Math.cos(snappedAngle) * distance,
+        y: origin.y + Math.sin(snappedAngle) * distance,
+      },
+      angle: snappedAngle,
+    };
+  }
+
+  let nearestAngle = WAYPOINT_SNAP_ANGLES[0];
+  let nearestDifference = angleDifference(angle, nearestAngle);
+  for (const candidate of WAYPOINT_SNAP_ANGLES.slice(1)) {
+    const difference = angleDifference(angle, candidate);
+    if (difference < nearestDifference) {
+      nearestAngle = candidate;
+      nearestDifference = difference;
+    }
+  }
+  if (nearestDifference > WAYPOINT_SNAP_CAPTURE) return { point, angle: null };
+  return {
+    point: {
+      x: origin.x + Math.cos(nearestAngle) * distance,
+      y: origin.y + Math.sin(nearestAngle) * distance,
+    },
+    angle: nearestAngle,
+  };
+}
+
 function shaftInset(head: ArrowHead, headSize: number, width: number): number {
   if (head === "triangle") {
     // Учитываем круглый strokeLinecap: видимая линия заканчивается ровно у основания.
@@ -320,13 +369,23 @@ function ArrowShape({
     const startX = e.clientX;
     const startY = e.clientY;
     let moved = false;
+    let snappedAngle: number | null = null;
+    // Берём соседнюю точку перед перетаскиваемым изломом: именно угол
+    // входящего сегмента привязывается к стандартным направлениям.
+    const snapOrigin = layout.points[index] ?? {
+      x: arrow.x + (arrow.waypoints?.[index - 1]?.x ?? arrow.fromPoint.x),
+      y: arrow.y + (arrow.waypoints?.[index - 1]?.y ?? arrow.fromPoint.y),
+    };
     const move = (ev: PointerEvent) => {
       if (!moved) {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) return;
         moved = true;
         pushHistory();
       }
-      useEditor.getState().updateWaypoint(arrow.id, index, worldFromEvent(ev));
+      const candidate = worldFromEvent(ev);
+      const snapped = snapWaypointToAngle(candidate, snapOrigin, snappedAngle);
+      snappedAngle = snapped.angle;
+      useEditor.getState().updateWaypoint(arrow.id, index, snapped.point);
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
